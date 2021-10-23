@@ -7,6 +7,8 @@ from typing import Any, Dict, Optional, Union
 
 import numpy as np
 import torch
+import yaml
+from torch.utils.tensorboard import SummaryWriter
 
 TensorOrFloat = Union[np.ndarray, torch.Tensor, float]
 
@@ -62,12 +64,12 @@ class Experiment:
     # Note: This hack is necessary because the SummaryWriter object instantly creates
     # a directory upon construction and thus would break the `assert_*` functionality.
     @property
-    def summary_writer(self) -> torch.utils.tensorboard.SummaryWriter:
+    def summary_writer(self) -> SummaryWriter:
         if not hasattr(self, "__summary_writer__"):
             object.__setattr__(
                 self,
                 "__summary_writer__",
-                torch.utils.tensorboard.SummaryWriter(self.log_dir),
+                SummaryWriter(self.log_dir),
             )
         return object.__getattribute__(self, "__summary_writer__")
 
@@ -124,8 +126,15 @@ class Experiment:
             self.summary_writer.add_scalar(tag=k, scalar_value=v, global_step=step)
         self.summary_writer.flush()
 
-    def write_metadata(self):
-        raise NotImplementedError
+    def write_metadata(self, name: str, object: Any) -> None:
+        """Serialize an object to disk as a yaml file."""
+        self._ensure_directory_exists(self.data_dir)
+        assert not name.endswith(".yaml")
+
+        path = self.data_dir / (name + ".yaml")
+        print(f"Writing metadata to {path}")
+        with open(path, "w") as fp:
+            yaml.dump(object, fp)
 
     def read_metadata(self):
         raise NotImplementedError

@@ -30,7 +30,7 @@ class CoordinateRegression(Dataset):
 
     def __init__(self, config: DatasetConfig) -> None:
         if not config.pixel_size % 2:
-            raise ValueError(f"'pixel_size' must be odd.")
+            raise ValueError("'pixel_size' must be odd.")
 
         self.dataset_size = config.dataset_size
         self.resolution = config.resolution
@@ -44,23 +44,41 @@ class CoordinateRegression(Dataset):
         if self.seed is not None:
             np.random.seed(self.seed)
 
+        self._coordinates = self._sample_coordinates(self.dataset_size)
+
+    def exclude(self, coordinates: np.ndarray) -> None:
+        """Exclude the given coordinates, if present, from the previously sampled ones.
+
+        This is useful for ensuring the train set does not accidentally leak into the
+        test set.
+        """
+        mask = (self.coordinates[:, None] == coordinates).all(-1).any(1)
+        num_matches = mask.sum()
+        while mask.sum() > 0:
+            self._coordinates[mask] = self._sample_coordinates(mask.sum())
+            mask = (self.coordinates[:, None] == coordinates).all(-1).any(1)
+        print(f"Resampled {num_matches} data points.")
+
+    def _sample_coordinates(self, size: int) -> np.ndarray:
+        """Helper method for generating pixel coordinates."""
         # Randomly generate pixel coordinates.
-        u = np.random.randint(0, self.resolution[0], size=(self.dataset_size))
-        v = np.random.randint(0, self.resolution[1], size=(self.dataset_size))
+        u = np.random.randint(0, self.resolution[0], size=size)
+        v = np.random.randint(0, self.resolution[1], size=size)
 
         # Ensure we remain within bounds when we take the pixel size into account.
         slack = self.pixel_size // 2
         u = np.clip(u, a_min=slack, a_max=self.resolution[0] - 1 - slack)
         v = np.clip(v, a_min=slack, a_max=self.resolution[1] - 1 - slack)
 
-        u = u.astype(np.int16)
-        v = v.astype(np.int16)
-
-        self._coordinates = np.vstack([u, v]).T
+        return np.vstack([u, v]).astype(np.int16).T
 
     @property
     def image_shape(self) -> Tuple[int, int, int]:
         return self.resolution + (3,)
+
+    @property
+    def coordinates(self) -> np.ndarray:
+        return self._coordinates
 
     def __len__(self) -> int:
         return self.dataset_size

@@ -25,8 +25,11 @@ class TrainState:
     def initialize(
         model_config: ConvMLPConfig,
         optim_config: OptimizerConfig,
-        device: torch.device,
+        device_type: str,
     ) -> "TrainState":
+        device = torch.device(device_type if torch.cuda.is_available() else "cpu")
+        print(f"Using device: {device}")
+
         model = ConvMLP(config=model_config)
 
         optimizer = torch.optim.Adam(
@@ -64,3 +67,7 @@ class TrainState:
         self.steps += 1
 
         return TensorboardLogData(scalars={"train/loss": loss.item()})
+
+    @torch.inference_mode()
+    def predict(self, input: torch.Tensor, target: torch.Tensor):
+        self.model.eval()

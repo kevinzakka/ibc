@@ -2,3 +2,5 @@ dcargs
 torch
 torchvision
 matplotlib
+tqdm
+tensorboard

@@ -5,7 +5,9 @@ from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
-from torchkit.layers import GlobalAvgPool2d, SpatialSoftArgmax
+
+from .modules import (CoordConv, GlobalAvgPool2d, GlobalMaxPool2d,
+                      SpatialSoftArgmax)
 
 
 class ActivationType(enum.Enum):
@@ -49,7 +51,7 @@ class MLP(nn.Module):
                     dropout_layer(),
                 ]
             layers += [nn.Linear(config.hidden_dim, config.output_dim)]
-        layers = [l for l in layers if not isinstance(l, nn.Identity)]
+        layers = [layer for layer in layers if not isinstance(layer, nn.Identity)]
 
         self.net = nn.Sequential(*layers)
 
@@ -138,33 +140,10 @@ class CNN(nn.Module):
         return out
 
 
-class CoordConv(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        batch_size, _, image_height, image_width = x.size()
-        y_coords = (
-            2.0
-            * torch.arange(image_height).unsqueeze(1).expand(image_height, image_width)
-            / (image_height - 1.0)
-            - 1.0
-        )
-        x_coords = (
-            2.0
-            * torch.arange(image_width).unsqueeze(0).expand(image_height, image_width)
-            / (image_width - 1.0)
-            - 1.0
-        )
-        coords = torch.stack((y_coords, x_coords), dim=0)
-        coords = torch.unsqueeze(coords, dim=0).repeat(batch_size, 1, 1, 1)
-        x = torch.cat((coords.to(x.device), x), dim=1)
-        return x
-
-
 class SpatialReduction(enum.Enum):
     SPATIAL_SOFTMAX = SpatialSoftArgmax
     AVERAGE_POOL = GlobalAvgPool2d
+    MAX_POOL = GlobalMaxPool2d
 
 
 @dataclasses.dataclass(frozen=True)
