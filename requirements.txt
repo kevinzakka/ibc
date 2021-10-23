@@ -1,0 +1,5 @@
+dcargs
+torch
+torchvision
+matplotlib
+git+https://github.com/kevinzakka/torchkit.git
