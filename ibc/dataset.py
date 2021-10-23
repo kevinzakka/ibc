@@ -22,19 +22,17 @@ class DatasetConfig:
     """The color of the pixel whose coordinates we'd like to regress."""
 
     seed: int = None
-    """Wether to seed the dataset. Does not seed if None."""
+    """Whether to seed the dataset. Does not seed if None."""
 
 
 class CoordinateRegression(Dataset):
-    """Coordinate regression task."""
+    """A coordinate regression task.
+
+    You are given a white image with a colored square, and the goal is to regress the
+    pixel coordinates of this square.
+    """
 
     def __init__(self, config: DatasetConfig) -> None:
-        if (
-            config.pixel_size >= config.resolution[0]
-            or config.pixel_size >= config.resolution[1]
-        ):
-            raise ValueError("'pixel_size' must be smaller than the total resolution.")
-
         self.dataset_size = config.dataset_size
         self.resolution = config.resolution
         self.pixel_size = config.pixel_size
