@@ -1,5 +1,5 @@
 import dataclasses
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -12,27 +12,26 @@ class DatasetConfig:
     dataset_size: int = 30
     """The size of the dataset. Useful for sample efficiency experiments."""
 
-    resolution: Tuple[int, int] = dataclasses.field(default=(100, 100))
+    resolution: Tuple[int, int] = (100, 100)
     """The resolution of the image."""
 
     pixel_size: int = 5
-    """The size of the pixel whose coordinates we'd like to regress."""
+    """The size of the pixel whose coordinates we'd like to regress. Must be odd."""
 
-    pixel_color: Tuple[int, int, int] = dataclasses.field(default=(0, 255, 0))
+    pixel_color: Tuple[int, int, int] = (0, 255, 0)
     """The color of the pixel whose coordinates we'd like to regress."""
 
-    seed: int = None
-    """Whether to seed the dataset. Does not seed if None."""
+    seed: Optional[int] = None
+    """Whether to seed the dataset. Disabled if None."""
 
 
 class CoordinateRegression(Dataset):
-    """A coordinate regression task.
-
-    You are given a white image with a colored square, and the goal is to regress the
-    pixel coordinates of this square.
-    """
+    """Regress the coordinates of a colored pixel block on a white canvas."""
 
     def __init__(self, config: DatasetConfig) -> None:
+        if not config.pixel_size % 2:
+            raise ValueError(f"'pixel_size' must be odd.")
+
         self.dataset_size = config.dataset_size
         self.resolution = config.resolution
         self.pixel_size = config.pixel_size
@@ -50,8 +49,12 @@ class CoordinateRegression(Dataset):
         v = np.random.randint(0, self.resolution[1], size=(self.dataset_size))
 
         # Ensure we remain within bounds when we take the pixel size into account.
-        u = np.clip(u, a_min=0, a_max=self.resolution[0] - self.pixel_size)
-        v = np.clip(v, a_min=0, a_max=self.resolution[1] - self.pixel_size)
+        slack = self.pixel_size // 2
+        u = np.clip(u, a_min=slack, a_max=self.resolution[0] - 1 - slack)
+        v = np.clip(v, a_min=slack, a_max=self.resolution[1] - 1 - slack)
+
+        u = u.astype(np.int16)
+        v = v.astype(np.int16)
 
         self._coordinates = np.vstack([u, v]).T
 
@@ -67,8 +70,8 @@ class CoordinateRegression(Dataset):
 
         image = np.full(self.image_shape, fill_value=255, dtype=np.uint8)
         image[
-            uv[0] : uv[0] + self.pixel_size,
-            uv[1] : uv[1] + self.pixel_size,
+            uv[0] - self.pixel_size // 2 : uv[0] + self.pixel_size // 2 + 1,
+            uv[1] - self.pixel_size // 2 : uv[1] + self.pixel_size // 2 + 1,
         ] = self.pixel_color
 
         image = ToTensor()(image)
@@ -80,10 +83,11 @@ class CoordinateRegression(Dataset):
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
-    dataset = CoordinateRegression(DatasetConfig())
+    dataset = CoordinateRegression(DatasetConfig(dataset_size=1_000))
 
     # Visualize one instance.
-    image, _ = dataset[np.random.randint(len(dataset))]
+    image, target = dataset[np.random.randint(len(dataset))]
+    print(target)
     plt.imshow(image.permute(1, 2, 0).numpy())
     plt.show()
 
@@ -94,6 +98,6 @@ if __name__ == "__main__":
     targets = np.asarray(targets)
 
     plt.scatter(targets[:, 0], targets[:, 1], marker="x", c="black")
-    plt.xlim(0 - 2, 100 + 2)
-    plt.ylim(0 - 2, 100 + 2)
+    plt.xlim(0 - 2, dataset.resolution[1] + 2)
+    plt.ylim(0 - 2, dataset.resolution[0] + 2)
     plt.show()
