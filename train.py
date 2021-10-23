@@ -2,89 +2,88 @@ import dataclasses
 
 import dcargs
 import torch
-from torchkit.utils import seed_rngs
 from tqdm.auto import tqdm
 
-from ibc import models
-from ibc.dataset import CoordinateRegression, DatasetConfig
+from ibc import dataset, models, trainer, utils
+from ibc.experiment import Experiment
 
 
 @dataclasses.dataclass
-class OptimizerConfig:
-    learning_rate: float = 1e-4
-    weight_decay: float = 0.0
-
-
-@dataclasses.dataclass
-class Args:
-    model_config: models.ConvMLPConfig = models.ConvMLPConfig(
-        cnn_config=models.CNNConfig(3),
-        mlp_config=models.MLPConfig(32, 128, 2, 2),
-    )
-    optim_config: OptimizerConfig = OptimizerConfig()
-    dataset_config: DatasetConfig = DatasetConfig()
-
+class TrainConfig:
+    experiment_name: str
     seed: int = 0
-    device: str = "cuda:0"
 
-    training_steps: int = 1
-    print_every_n: int = 100
-    batch_size: int = 16
+    dataset_config: dataset.DatasetConfig = dataset.DatasetConfig(
+        dataset_size=30,
+        resolution=(100, 100),
+        pixel_size=5,
+        seed=0,
+    )
+
+    max_epochs: int = 10
+    batch_size: int = 8
+
     num_workers: int = 1
 
-
-@dataclasses.dataclass
-class TrainState:
-    model: models.ConvMLP
-    optimizer: torch.optim.Optimizer
-    steps: int
-
-    @staticmethod
-    def initialize(
-        model_config: models.ConvMLPConfig, optim_config: OptimizerConfig
-    ) -> "TrainState":
-        model = models.ConvMLP(config=model_config)
-        optimizer = torch.optim.Adam(
-            model.parameters(),
-            lr=optim_config.learning_rate,
-            weight_decay=optim_config.weight_decay,
-        )
-        return TrainState(
-            model=model,
-            optimizer=optimizer,
-            steps=0,
-        )
+    cudnn_deterministic: bool = False
+    cudnn_benchmark: bool = True
+    log_every_n_steps: int = 10
+    checkpoint_every_n_steps: int = 1
 
 
-def main(args: Args):
+def main(train_config: TrainConfig) -> None:
     # Seed RNGs.
-    seed_rngs(args.seed)
+    utils.seed_rngs(train_config.seed)
+
+    # CUDA/CUDNN-related shenanigans.
+    utils.set_cudnn(train_config.cudnn_deterministic, train_config.cudnn_benchmark)
 
     # Setup compute device.
-    if torch.cuda.is_available():
-        device = torch.device(args.device)
+    cuda_available: bool = torch.cuda.is_available()
+    if cuda_available:
+        device = torch.device(train_config.device)
     else:
         device = torch.device("cpu")
     print(f"Using device: {device}")
 
-    # Setup dataset.
-    args.dataset_config.seed = args.seed
-    dataset = CoordinateRegression(args.dataset_config)
-    data_loader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers if torch.cuda.is_available() else 0,
-        pin_memory=torch.cuda.is_available(),
+    # Initialize dataset.
+    train_dataloader = torch.utils.data.DataLoader(
+        dataset.CoordinateRegression(train_config.dataset_config),
+        batch_size=train_config.batch_size,
+        num_workers=train_config.num_workers if cuda_available else 0,
+        pin_memory=cuda_available,
+        shuffle=True,
         drop_last=True,
     )
-    print(f"Data loaded: there are {len(dataset)} images.")
 
-    train_state = TrainState.initialize(args.model_config, args.optim_config)
+    experiment = Experiment(identifier=train_config.experiment_name).assert_new()
 
-    for step in tqdm(range(args.training_steps)):
-        if step % args.print_every_n == 0:
-            pass
+    train_state = trainer.TrainState.initialize(
+        model_config=models.ConvMLPConfig(
+            cnn_config=models.CNNConfig(3, [16, 32, 32]),
+            mlp_config=models.MLPConfig(32, 128, 2, 2),
+            spatial_reduction=models.SpatialReduction.AVERAGE_POOL,
+            coord_conv=False,
+        ),
+        optim_config=trainer.OptimizerConfig(),
+        device=device,
+    )
+
+    for epoch in range(train_config.max_epochs):
+        if train_state.steps % train_config.checkpoint_every_n_steps == 0:
+            experiment.save_checkpoint(train_state.state, step=train_state.steps)
+
+        for batch in tqdm(train_dataloader):
+            input, target = batch
+            log_data = train_state.training_step(input, target)
+
+            # Log to tensorboard.
+            if train_state.steps % train_config.log_every_n_steps == 0:
+                experiment.log(log_data, step=train_state.steps)
+
+    # Save one final checkpoint.
+    experiment.save_checkpoint(train_state.state, step=train_state.steps)
 
 
 if __name__ == "__main__":
-    main(dcargs.parse(Args))
+    main(dcargs.parse(TrainConfig))
