@@ -162,11 +162,16 @@ class CoordConv(nn.Module):
         return x
 
 
+class SpatialReduction(enum.Enum):
+    SPATIAL_SOFTMAX = SpatialSoftArgmax
+    AVERAGE_POOL = GlobalAvgPool2d
+
+
 @dataclasses.dataclass(frozen=True)
 class ConvMLPConfig:
     cnn_config: CNNConfig
     mlp_config: MLPConfig
-    spatial_reduction: str = "average_pool"
+    spatial_reduction: SpatialReduction = SpatialReduction.AVERAGE_POOL
     coord_conv: bool = False
 
 
@@ -177,12 +182,7 @@ class ConvMLP(nn.Module):
         self.coord_conv = config.coord_conv
 
         self.cnn = CNN(config.cnn_config)
-
-        if config.spatial_reduction == "spatial_softargmax":
-            self.reducer = SpatialSoftArgmax()
-        else:
-            self.reducer = GlobalAvgPool2d()
-
+        self.reducer = config.spatial_reduction.value()
         self.mlp = MLP(config.mlp_config)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -198,7 +198,7 @@ if __name__ == "__main__":
     config = ConvMLPConfig(
         cnn_config=CNNConfig(5),
         mlp_config=MLPConfig(32, 128, 2, 2),
-        spatial_reduction="average_pool",
+        spatial_reduction=SpatialReduction.AVERAGE_POOL,
         coord_conv=True,
     )
 
