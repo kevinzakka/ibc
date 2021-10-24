@@ -4,3 +4,4 @@ torchvision
 matplotlib
 tqdm
 tensorboard
+scipy

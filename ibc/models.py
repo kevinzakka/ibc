@@ -6,8 +6,7 @@ from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 
-from .modules import (CoordConv, GlobalAvgPool2d, GlobalMaxPool2d,
-                      SpatialSoftArgmax)
+from .modules import CoordConv, GlobalAvgPool2d, GlobalMaxPool2d, SpatialSoftArgmax
 
 
 class ActivationType(enum.Enum):

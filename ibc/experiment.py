@@ -1,15 +1,21 @@
+from __future__ import annotations
+
 import dataclasses
 import os
 import pathlib
 import signal
 import tempfile
-from typing import Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Type, TypeVar, Union
+
+if TYPE_CHECKING:
+    from .trainer import TrainState
 
 import numpy as np
 import torch
 import yaml
 from torch.utils.tensorboard import SummaryWriter
 
+T = TypeVar("T")
 TensorOrFloat = Union[np.ndarray, torch.Tensor, float]
 
 
@@ -18,10 +24,10 @@ class TensorboardLogData:
     scalars: Dict[str, TensorOrFloat] = dataclasses.field(default_factory=dict)
 
     @staticmethod
-    def merge(a: "TensorboardLogData", b: "TensorboardLogData") -> "TensorboardLogData":
+    def merge(a: TensorboardLogData, b: TensorboardLogData) -> TensorboardLogData:
         return TensorboardLogData(scalars=dict(**a.scalars, **b.scalars))
 
-    def extend(self, scalars: Dict[str, TensorOrFloat] = {}) -> "TensorboardLogData":
+    def extend(self, scalars: Dict[str, TensorOrFloat] = {}) -> TensorboardLogData:
         return TensorboardLogData.merge(self, TensorboardLogData(scalars=scalars))
 
 
@@ -79,7 +85,7 @@ class Experiment:
 
     def save_checkpoint(
         self,
-        state: Dict[str, Any],
+        target: TrainState,
         step: int,
         prefix: str = "ckpt_",
         keep: int = 10,
@@ -88,33 +94,39 @@ class Experiment:
         self._ensure_directory_exists(self.checkpoint_dir)
 
         # Create a snapshot of the state.
-        state_dict = dict()
-        for k, v in state.items():
-            state_dict[k] = v.state_dict()
+        snapshot_state = {}
+        for k, v in target.__dict__.items():
+            if hasattr(v, "state_dict"):
+                snapshot_state[k] = v.state_dict()
+        snapshot_state["steps"] = target.steps
 
-        # Save to disk and trim any extraneous checkpoints.
-        self._atomic_save(self.checkpoint_dir / f"{prefix}{step}.ckpt", state_dict)
+        # Save to disk.
+        checkpoint_path = self.checkpoint_dir / f"{prefix}{step}.ckpt"
+        self._atomic_save(checkpoint_path, snapshot_state)
+
+        # Trim extraneous checkpoints.
         self._trim_checkpoints(keep)
 
     def restore_checkpoint(
         self,
-        state: Dict[str, Any],
+        target: TrainState,
         step: Optional[int] = None,
         prefix: str = "ckpt_",
-    ) -> None:
+    ):
         """Restore a snapshot of the train state from disk."""
         # Get latest checkpoint if no step has been provided.
         if step is None:
             step = self._get_latest_checkpoint_step()
 
         checkpoint_path = self.checkpoint_dir / f"{prefix}{step}.ckpt"
-        state_dict = torch.load(checkpoint_path, map_location="cpu")
-        assert state.keys() == state_dict.keys()
+        snapshot_state = torch.load(checkpoint_path, map_location="cpu")
 
-        for k, v in state_dict.items():
-            state[k].load_state_dict(v)
+        delattr(target, "steps")
+        setattr(target, "steps", snapshot_state["steps"])
 
-        print(f"Successfully loaded state from step {step}.")
+        for k, v in target.__dict__.items():
+            if hasattr(v, "state_dict"):
+                getattr(target, k).load_state_dict(snapshot_state[k])
 
     # =================================================================== #
     # Logging.
@@ -136,8 +148,15 @@ class Experiment:
         with open(path, "w") as fp:
             yaml.dump(object, fp)
 
-    def read_metadata(self):
-        raise NotImplementedError
+    def read_metadata(self, name: str, expected_type: Type[T]) -> T:
+        """Load an object from the experiment's metadata directory."""
+        path = self.data_dir / (name + ".yaml")
+
+        with open(path, "r") as fp:
+            output = yaml.load(fp, Loader=yaml.Loader)
+
+        assert isinstance(output, expected_type)
+        return output
 
     # =================================================================== #
     # Helper functions.

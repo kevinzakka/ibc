@@ -1,12 +1,14 @@
+"""Script for training. Pass in --help flag for options."""
+
 import dataclasses
-from typing import Optional, Tuple
+from typing import Dict, Optional
 
 import dcargs
 import torch
 from tqdm.auto import tqdm
 
 from ibc import dataset, models, trainer, utils
-from ibc.experiment import Experiment
+from ibc.experiment import Experiment, TensorboardLogData
 
 
 @dataclasses.dataclass
@@ -14,8 +16,8 @@ class TrainConfig:
     experiment_name: str
     seed: int = 0
     device_type: str = "cuda"
-    train_dataset_size: int = 30
-    test_dataset_size: int = 1000
+    train_dataset_size: int = 10
+    test_dataset_size: int = 500
     max_epochs: int = 200
     learning_rate: float = 1e-4
     weight_decay: float = 0.0
@@ -29,11 +31,12 @@ class TrainConfig:
     cudnn_benchmark: bool = True
     log_every_n_steps: int = 10
     checkpoint_every_n_steps: int = 100
+    eval_every_n_steps: int = 50
 
 
 def make_dataloaders(
     train_config: TrainConfig,
-) -> Tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
+) -> Dict[str, torch.utils.data.DataLoader]:
     """Initialize train/test dataloaders based on config values."""
     kwargs = {
         "num_workers": 0,
@@ -64,7 +67,10 @@ def make_dataloaders(
         **kwargs,
     )
 
-    return train_dataloader, test_dataloader
+    return {
+        "train": train_dataloader,
+        "test": test_dataloader,
+    }
 
 
 def make_train_state(train_config: TrainConfig) -> trainer.TrainState:
@@ -100,6 +106,18 @@ def make_train_state(train_config: TrainConfig) -> trainer.TrainState:
     return train_state
 
 
+def evaluate(
+    train_state: trainer.TrainState, test_dataloader: torch.utils.data.DataLoader
+):
+    total_mse = 0.0
+    for batch in tqdm(test_dataloader):
+        mse = train_state.predict(*batch, reduction="none")
+        total_mse += mse.mean(dim=-1).sum().item()
+    num_test = len(test_dataloader.dataset)
+    mean_mse = total_mse / num_test
+    return TensorboardLogData(scalars={"test/mse": mean_mse})
+
+
 def main(train_config: TrainConfig) -> None:
     # Seed RNGs.
     utils.seed_rngs(train_config.seed)
@@ -107,26 +125,34 @@ def main(train_config: TrainConfig) -> None:
     # CUDA/CUDNN-related shenanigans.
     utils.set_cudnn(train_config.cudnn_deterministic, train_config.cudnn_benchmark)
 
-    experiment = Experiment(identifier=train_config.experiment_name).assert_new()
+    experiment = Experiment(
+        identifier=train_config.experiment_name,
+    ).assert_new()
+
+    # Write some metadata.
     experiment.write_metadata("config", train_config)
 
-    train_dataloader, test_dataloader = make_dataloaders(train_config)
     train_state = make_train_state(train_config)
+    dataloaders = make_dataloaders(train_config)
 
     for epoch in range(train_config.max_epochs):
         if train_state.steps % train_config.checkpoint_every_n_steps == 0:
-            experiment.save_checkpoint(train_state.state, step=train_state.steps)
+            experiment.save_checkpoint(train_state, step=train_state.steps)
 
-        for batch in tqdm(train_dataloader):
-            log_data = train_state.training_step(*batch)
+        if train_state.steps % train_config.eval_every_n_steps == 0:
+            test_log_data = evaluate(train_state, dataloaders["test"])
+            experiment.log(test_log_data, step=train_state.steps)
+
+        for batch in tqdm(dataloaders["train"]):
+            train_log_data = train_state.training_step(*batch)
 
             # Log to tensorboard.
             if train_state.steps % train_config.log_every_n_steps == 0:
-                experiment.log(log_data, step=train_state.steps)
+                experiment.log(train_log_data, step=train_state.steps)
 
     # Save one final checkpoint.
-    experiment.save_checkpoint(train_state.state, step=train_state.steps)
+    experiment.save_checkpoint(train_state, step=train_state.steps)
 
 
 if __name__ == "__main__":
-    main(dcargs.parse(TrainConfig))
+    main(dcargs.parse(TrainConfig, description=__doc__))

@@ -1,5 +1,6 @@
+from __future__ import annotations
+
 import dataclasses
-from typing import Any, Dict
 
 import torch
 import torch.nn.functional as F
@@ -26,7 +27,7 @@ class TrainState:
         model_config: ConvMLPConfig,
         optim_config: OptimizerConfig,
         device_type: str,
-    ) -> "TrainState":
+    ) -> TrainState:
         device = torch.device(device_type if torch.cuda.is_available() else "cpu")
         print(f"Using device: {device}")
 
@@ -40,15 +41,6 @@ class TrainState:
 
         return TrainState(model=model, optimizer=optimizer, device=device, steps=0)
 
-    @property
-    def state(self) -> Dict[str, Any]:
-        """Returns all objects with a state_dict attribute."""
-        state: Dict[str, Any] = {}
-        for k, v in self.__dict__.items():
-            if hasattr(v, "state_dict"):
-                state[k] = v
-        return state
-
     def training_step(
         self, input: torch.Tensor, target: torch.Tensor
     ) -> TensorboardLogData:
@@ -60,7 +52,7 @@ class TrainState:
         out = self.model(input)
         loss = F.mse_loss(out, target)
 
-        self.optimizer.zero_grad()
+        self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
         self.optimizer.step()
 
@@ -68,6 +60,19 @@ class TrainState:
 
         return TensorboardLogData(scalars={"train/loss": loss.item()})
 
-    @torch.inference_mode()
-    def predict(self, input: torch.Tensor, target: torch.Tensor):
+    @torch.no_grad()
+    def predict(
+        self,
+        input: torch.Tensor,
+        target: torch.Tensor,
+        reduction: str = "none",
+    ) -> torch.Tensor:
         self.model.eval()
+
+        input = input.to(self.device)
+        target = target.to(self.device)
+
+        prediction = self.model(input)
+        mean_squared_error = F.mse_loss(prediction, target, reduction=reduction)
+
+        return mean_squared_error
