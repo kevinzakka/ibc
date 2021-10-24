@@ -29,14 +29,14 @@ class CoordConv(nn.Module):
 
 
 class SpatialSoftArgmax(nn.Module):
-    """Spatial softmax as defined in https://arxiv.org/abs/1504.00702
+    """Spatial softmax as defined in https://arxiv.org/abs/1504.00702.
 
     Concretely, the spatial softmax of each feature map is used to compute a weighted
     mean of the pixel locations, effectively performing a soft arg-max over the feature
     dimension.
     """
 
-    def __init__(self, normalize: bool = True) -> None:
+    def __init__(self, normalize: bool = False) -> None:
         super().__init__()
 
         self.normalize = normalize
@@ -52,12 +52,14 @@ class SpatialSoftArgmax(nn.Module):
                 torch.meshgrid(
                     torch.linspace(-1, 1, w, device=device),
                     torch.linspace(-1, 1, h, device=device),
+                    indexing="ij",
                 )
             )
         return torch.stack(
             torch.meshgrid(
                 torch.arange(0, w, device=device),
                 torch.arange(0, h, device=device),
+                indexing="ij",
             )
         )
 

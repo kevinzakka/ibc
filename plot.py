@@ -12,7 +12,7 @@ from scipy.spatial import ConvexHull
 from tqdm.auto import tqdm
 
 from ibc.experiment import Experiment
-from ibc.trainer import TrainState
+from ibc.trainer import AbstractTrainState
 from train import TrainConfig, make_dataloaders, make_train_state
 
 
@@ -24,7 +24,7 @@ class Args:
 
 
 def eval(
-    train_state: TrainState,
+    train_state: AbstractTrainState,
     dataloaders: Dict[str, torch.utils.data.DataLoader],
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     test_coords = []
@@ -94,7 +94,7 @@ def plot(
     plt.ylim(0 - 2, resolution[0] + 2)
 
     plt.savefig(plot_path, format="png", dpi=dpi)
-    plt.show()
+    plt.close()
 
 
 def main(args: Args):

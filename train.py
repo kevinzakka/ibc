@@ -19,11 +19,12 @@ class TrainConfig:
     train_dataset_size: int = 10
     test_dataset_size: int = 500
     max_epochs: int = 200
-    learning_rate: float = 1e-4
+    learning_rate: float = 1e-3
     weight_decay: float = 0.0
     train_batch_size: int = 8
     test_batch_size: int = 64
-    spatial_reduction: models.SpatialReduction = models.SpatialReduction.MAX_POOL
+    policy_type: trainer.PolicyType = trainer.PolicyType.EXPLICIT_MSE
+    spatial_reduction: models.SpatialReduction = models.SpatialReduction.SPATIAL_SOFTMAX
     coord_conv: bool = False
     dropout_prob: Optional[float] = None
     num_workers: int = 1
@@ -73,7 +74,9 @@ def make_dataloaders(
     }
 
 
-def make_train_state(train_config: TrainConfig) -> trainer.TrainState:
+def make_train_state(
+    train_config: trainer.AbstractTrainState,
+) -> trainer.AbstractTrainState:
     """Initialize train state based on config values."""
     in_channels = 3
     if train_config.coord_conv:
@@ -83,7 +86,7 @@ def make_train_state(train_config: TrainConfig) -> trainer.TrainState:
     input_dim = 32
     if train_config.spatial_reduction == models.SpatialReduction.SPATIAL_SOFTMAX:
         input_dim *= 2
-    mlp_config = models.MLPConfig(input_dim, 128, 2, 2, train_config.dropout_prob)
+    mlp_config = models.MLPConfig(input_dim, 256, 2, 1, train_config.dropout_prob)
 
     model_config = models.ConvMLPConfig(
         cnn_config=cnn_config,
@@ -97,7 +100,7 @@ def make_train_state(train_config: TrainConfig) -> trainer.TrainState:
         weight_decay=train_config.weight_decay,
     )
 
-    train_state = trainer.TrainState.initialize(
+    train_state = train_config.policy_type.value.initialize(
         model_config=model_config,
         optim_config=optim_config,
         device_type=train_config.device_type,
@@ -107,10 +110,11 @@ def make_train_state(train_config: TrainConfig) -> trainer.TrainState:
 
 
 def evaluate(
-    train_state: trainer.TrainState, test_dataloader: torch.utils.data.DataLoader
+    train_state: trainer.AbstractTrainState,
+    test_dataloader: torch.utils.data.DataLoader,
 ):
     total_mse = 0.0
-    for batch in tqdm(test_dataloader):
+    for batch in tqdm(test_dataloader, leave=False):
         mse = train_state.predict(*batch, reduction="none")
         total_mse += mse.mean(dim=-1).sum().item()
     num_test = len(test_dataloader.dataset)
@@ -135,7 +139,7 @@ def main(train_config: TrainConfig) -> None:
     train_state = make_train_state(train_config)
     dataloaders = make_dataloaders(train_config)
 
-    for epoch in range(train_config.max_epochs):
+    for epoch in tqdm(range(train_config.max_epochs)):
         if train_state.steps % train_config.checkpoint_every_n_steps == 0:
             experiment.save_checkpoint(train_state, step=train_state.steps)
 
@@ -143,7 +147,7 @@ def main(train_config: TrainConfig) -> None:
             test_log_data = evaluate(train_state, dataloaders["test"])
             experiment.log(test_log_data, step=train_state.steps)
 
-        for batch in tqdm(dataloaders["train"]):
+        for batch in dataloaders["train"]:
             train_log_data = train_state.training_step(*batch)
 
             # Log to tensorboard.
