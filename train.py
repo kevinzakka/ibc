@@ -5,6 +5,7 @@ from typing import Dict, Optional
 
 import dcargs
 import torch
+from torch.utils import data
 from tqdm.auto import tqdm
 
 from ibc import dataset, models, optimizers, trainer, utils
@@ -23,10 +24,6 @@ class TrainConfig:
     weight_decay: float = 0.0
     train_batch_size: int = 8
     test_batch_size: int = 64
-    policy_type: trainer.PolicyType = trainer.PolicyType.EXPLICIT
-    stochastic_optim_type: optimizers.StochasticOptimizerType = (
-        optimizers.StochasticOptimizerType.DERIVATIVE_FREE
-    )
     spatial_reduction: models.SpatialReduction = models.SpatialReduction.SPATIAL_SOFTMAX
     coord_conv: bool = False
     dropout_prob: Optional[float] = None
@@ -36,6 +33,19 @@ class TrainConfig:
     log_every_n_steps: int = 10
     checkpoint_every_n_steps: int = 100
     eval_every_n_steps: int = 50
+    target_bounds_percent: float = 0.05
+
+    # Choose between implicit or explicit policy.
+    policy_type: trainer.PolicyType = trainer.PolicyType.EXPLICIT
+
+    # If you choose implicit, then you have a choice between which stochastic optimizer to use.
+    stochastic_optim_type: optimizers.StochasticOptimizerType = (
+        optimizers.StochasticOptimizerType.DERIVATIVE_FREE
+    )
+
+    # Stochastic optimizer parameters.
+    derivative_free_samples: int = 2 ** 14
+    derivative_free_iters: int = 3
 
 
 def make_dataloaders(
@@ -81,19 +91,20 @@ def make_dataloaders(
 
 def make_train_state(
     train_config: trainer.TrainStateProtocol,
+    train_dataloader: torch.utils.data.DataLoader,
 ) -> trainer.TrainStateProtocol:
     """Initialize train state based on config values."""
-    in_channels = 3
-    if train_config.coord_conv:
-        in_channels += 2
-    cnn_config = models.CNNConfig(in_channels, [16, 32, 32])
-
-    input_dim = 32
-    if train_config.spatial_reduction == models.SpatialReduction.SPATIAL_SOFTMAX:
-        input_dim *= 2
-    mlp_config = models.MLPConfig(input_dim, 256, 2, 1, train_config.dropout_prob)
-
     if train_config.policy_type == trainer.PolicyType.EXPLICIT:
+        in_channels = 3
+        if train_config.coord_conv:
+            in_channels += 2
+        cnn_config = models.CNNConfig(in_channels, [16, 32, 32])
+
+        input_dim = 32
+        if train_config.spatial_reduction == models.SpatialReduction.SPATIAL_SOFTMAX:
+            input_dim *= 2
+        mlp_config = models.MLPConfig(input_dim, 256, 2, 1, train_config.dropout_prob)
+
         model_config = models.ConvMLPConfig(
             cnn_config=cnn_config,
             mlp_config=mlp_config,
@@ -106,19 +117,49 @@ def make_train_state(
             weight_decay=train_config.weight_decay,
         )
 
-        train_state = train_config.policy_type.value.initialize(
+        train_state = trainer.ExplicitTrainState(
             model_config=model_config,
             optim_config=optim_config,
             device_type=train_config.device_type,
         )
     else:
-        model_config = None
-        optim_config = None
-        stochastic_optim_config = None
-        train_state = train_config.policy_type.value.initialize(
+        cnn_config = models.CNNConfig(3, [16, 32, 32])
+
+        input_dim = 32
+        if train_config.spatial_reduction == models.SpatialReduction.SPATIAL_SOFTMAX:
+            input_dim *= 2
+        mlp_config = models.MLPConfig(input_dim, 256, 2, 1, train_config.dropout_prob)
+
+        model_config = models.ConvMLPConfig(
+            cnn_config=cnn_config,
+            mlp_config=mlp_config,
+            spatial_reduction=train_config.spatial_reduction,
+            coord_conv=train_config.coord_conv,
+        )
+
+        optim_config = optimizers.OptimizerConfig(
+            learning_rate=train_config.learning_rate,
+            weight_decay=train_config.weight_decay,
+        )
+
+        target_bounds = train_dataloader.dataset.get_target_bounds(
+            train_config.target_bounds_percent
+        )
+
+        if (
+            train_config.stochastic_optim_type
+            == optimizers.StochasticOptimizerType.DERIVATIVE_FREE
+        ):
+            stochastic_optim_config = optimizers.DerivativeFreeOptimizerConfig(
+                bounds=None,
+                iters=train_config.derivative_free_iters,
+                samples=train_config.d,
+            )
+
+        train_state = trainer.ImplicitTrainState.initialize(
             model_config=model_config,
             optim_config=optim_config,
-            stochastic_optim_config=stochastic_optim_config,
+            sotchastic_optim_type=train_config.stochastic_optim_type,
             device_type=train_config.device_type,
         )
 
@@ -139,8 +180,10 @@ def main(train_config: TrainConfig) -> None:
     # Write some metadata.
     experiment.write_metadata("config", train_config)
 
-    train_state = make_train_state(train_config)
+    # Initialize train and test dataloaders.
     dataloaders = make_dataloaders(train_config)
+
+    train_state = make_train_state(train_config, dataloaders["train"])
 
     for epoch in tqdm(range(train_config.max_epochs)):
         if not train_state.steps % train_config.checkpoint_every_n_steps:

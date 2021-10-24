@@ -59,6 +59,30 @@ class CoordinateRegression(Dataset):
             mask = (self.coordinates[:, None] == coordinates).all(-1).any(1)
         print(f"Resampled {num_matches} data points.")
 
+    def get_target_bounds(self, percent: float = 0.05) -> np.ndarray:
+        """Return per-dimension target min/max plus or minus a small buffer.
+
+        This is described in Section B of the supplemental.
+        """
+        # Compute per-dimension min and max.
+        per_dim_min = self.coordinates.min(axis=0)
+        per_dim_max = self.coordinates.max(axis=0)
+
+        # Add a small buffer, typically 0.05 * (max - min).
+        buffer = percent * (per_dim_max - per_dim_min)
+        bounds = np.vstack([per_dim_min - buffer, per_dim_max + buffer])
+
+        # Clip to allowed min/max.
+        slack = self.pixel_size // 2
+        bounds[:, 0] = np.clip(
+            bounds[:, 0], a_min=slack, a_max=self.resolution[0] - 1 - slack
+        )
+        bounds[:, 1] = np.clip(
+            bounds[:, 1], a_min=slack, a_max=self.resolution[1] - 1 - slack
+        )
+
+        return bounds
+
     def _sample_coordinates(self, size: int) -> np.ndarray:
         """Helper method for generating pixel coordinates."""
         # Randomly generate pixel coordinates.
@@ -101,7 +125,7 @@ class CoordinateRegression(Dataset):
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
-    dataset = CoordinateRegression(DatasetConfig(dataset_size=1_000))
+    dataset = CoordinateRegression(DatasetConfig(dataset_size=30))
 
     # Visualize one instance.
     image, target = dataset[np.random.randint(len(dataset))]
@@ -119,3 +143,5 @@ if __name__ == "__main__":
     plt.xlim(0 - 2, dataset.resolution[1] + 2)
     plt.ylim(0 - 2, dataset.resolution[0] + 2)
     plt.show()
+
+    print(f"Target bounds: {dataset.get_target_bounds().tolist()}")

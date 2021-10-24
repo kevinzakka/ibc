@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import enum
 import dataclasses
+import enum
 from typing import Protocol
+
 import numpy as np
 import torch
-import torch.nn as nn
 
 
 @dataclasses.dataclass
@@ -28,14 +28,6 @@ class StochasticOptimizerConfig:
     """The number of counter-examples to sample per iter."""
 
 
-@dataclasses.dataclass
-class DerivativeFreeOptimizerConfig(StochasticOptimizerConfig):
-    sigma_init: float = 0.33
-    K: float = 0.5
-    iters: int = 3
-    samples: int = 16_384
-
-
 class StochasticOptimizer(Protocol):
     """Functionality that needs to be implemented by all stochastic optimizers."""
 
@@ -51,7 +43,7 @@ class DerivativeFreeOptimizerConfig(StochasticOptimizerConfig):
     sigma_init: float = 0.33
     K: float = 0.5
     iters: int = 3
-    samples: int = 16_384
+    samples: int = 2 ** 14
 
 
 @dataclasses.dataclass
@@ -63,5 +55,15 @@ class DerivativeFreeOptimizer:
         pass
 
 
+@dataclasses.dataclass
+class StochasticGradientLangevinDynamicsOptimizer:
+    def sample(self):
+        pass
+
+    def infer(self):
+        pass
+
+
 class StochasticOptimizerType(enum.Enum):
     DERIVATIVE_FREE = DerivativeFreeOptimizer
+    LANGEVIN_DYNAMICS = StochasticGradientLangevinDynamicsOptimizer

@@ -12,7 +12,6 @@ from tqdm.auto import tqdm
 from . import experiment, models, optimizers
 
 
-@dataclasses.dataclass
 class TrainStateProtocol(Protocol):
     """Functionality that needs to be implemented by all training states."""
 
@@ -25,7 +24,6 @@ class TrainStateProtocol(Protocol):
     ) -> experiment.TensorboardLogData:
         """Performs a single training step on a mini-batch of data."""
 
-    @torch.no_grad()
     def evaluate(
         self, dataloader: torch.utils.data.DataLoader
     ) -> experiment.TensorboardLogData:
@@ -118,7 +116,7 @@ class ImplicitTrainState:
     def initialize(
         model_config: models.ConvMLPConfig,
         optim_config: optimizers.OptimizerConfig,
-        sotchastic_optim_config: optimizers.StochasticOptimizerConfig,
+        sotchastic_optim_type: optimizers.StochasticOptimizerType,
         device_type: str,
     ) -> ExplicitTrainState:
         device = torch.device(device_type if torch.cuda.is_available() else "cpu")
@@ -132,6 +130,8 @@ class ImplicitTrainState:
             weight_decay=optim_config.weight_decay,
             betas=(optim_config.beta1, optim_config.beta2),
         )
+
+        stochastic_optimizer = None
 
         return ImplicitTrainState(
             model=model,
