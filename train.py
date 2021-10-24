@@ -7,8 +7,8 @@ import dcargs
 import torch
 from tqdm.auto import tqdm
 
-from ibc import dataset, models, trainer, utils
-from ibc.experiment import Experiment, TensorboardLogData
+from ibc import dataset, models, optimizers, trainer, utils
+from ibc.experiment import Experiment
 
 
 @dataclasses.dataclass
@@ -23,7 +23,10 @@ class TrainConfig:
     weight_decay: float = 0.0
     train_batch_size: int = 8
     test_batch_size: int = 64
-    policy_type: trainer.PolicyType = trainer.PolicyType.EXPLICIT_MSE
+    policy_type: trainer.PolicyType = trainer.PolicyType.EXPLICIT
+    stochastic_optim_type: optimizers.StochasticOptimizerType = (
+        optimizers.StochasticOptimizerType.DERIVATIVE_FREE
+    )
     spatial_reduction: models.SpatialReduction = models.SpatialReduction.SPATIAL_SOFTMAX
     coord_conv: bool = False
     dropout_prob: Optional[float] = None
@@ -45,6 +48,7 @@ def make_dataloaders(
         "shuffle": True,
     }
 
+    # Train split.
     train_dataset_config = dataset.DatasetConfig(
         dataset_size=train_config.train_dataset_size,
         seed=train_config.seed,
@@ -56,6 +60,7 @@ def make_dataloaders(
         **kwargs,
     )
 
+    # Test split.
     test_dataset_config = dataset.DatasetConfig(
         dataset_size=train_config.test_dataset_size,
         seed=train_config.seed,
@@ -75,8 +80,8 @@ def make_dataloaders(
 
 
 def make_train_state(
-    train_config: trainer.AbstractTrainState,
-) -> trainer.AbstractTrainState:
+    train_config: trainer.TrainStateProtocol,
+) -> trainer.TrainStateProtocol:
     """Initialize train state based on config values."""
     in_channels = 3
     if train_config.coord_conv:
@@ -88,38 +93,36 @@ def make_train_state(
         input_dim *= 2
     mlp_config = models.MLPConfig(input_dim, 256, 2, 1, train_config.dropout_prob)
 
-    model_config = models.ConvMLPConfig(
-        cnn_config=cnn_config,
-        mlp_config=mlp_config,
-        spatial_reduction=train_config.spatial_reduction,
-        coord_conv=train_config.coord_conv,
-    )
+    if train_config.policy_type == trainer.PolicyType.EXPLICIT:
+        model_config = models.ConvMLPConfig(
+            cnn_config=cnn_config,
+            mlp_config=mlp_config,
+            spatial_reduction=train_config.spatial_reduction,
+            coord_conv=train_config.coord_conv,
+        )
 
-    optim_config = trainer.OptimizerConfig(
-        learning_rate=train_config.learning_rate,
-        weight_decay=train_config.weight_decay,
-    )
+        optim_config = optimizers.OptimizerConfig(
+            learning_rate=train_config.learning_rate,
+            weight_decay=train_config.weight_decay,
+        )
 
-    train_state = train_config.policy_type.value.initialize(
-        model_config=model_config,
-        optim_config=optim_config,
-        device_type=train_config.device_type,
-    )
+        train_state = train_config.policy_type.value.initialize(
+            model_config=model_config,
+            optim_config=optim_config,
+            device_type=train_config.device_type,
+        )
+    else:
+        model_config = None
+        optim_config = None
+        stochastic_optim_config = None
+        train_state = train_config.policy_type.value.initialize(
+            model_config=model_config,
+            optim_config=optim_config,
+            stochastic_optim_config=stochastic_optim_config,
+            device_type=train_config.device_type,
+        )
 
     return train_state
-
-
-def evaluate(
-    train_state: trainer.AbstractTrainState,
-    test_dataloader: torch.utils.data.DataLoader,
-):
-    total_mse = 0.0
-    for batch in tqdm(test_dataloader, leave=False):
-        mse = train_state.predict(*batch, reduction="none")
-        total_mse += mse.mean(dim=-1).sum().item()
-    num_test = len(test_dataloader.dataset)
-    mean_mse = total_mse / num_test
-    return TensorboardLogData(scalars={"test/mse": mean_mse})
 
 
 def main(train_config: TrainConfig) -> None:
@@ -140,18 +143,18 @@ def main(train_config: TrainConfig) -> None:
     dataloaders = make_dataloaders(train_config)
 
     for epoch in tqdm(range(train_config.max_epochs)):
-        if train_state.steps % train_config.checkpoint_every_n_steps == 0:
+        if not train_state.steps % train_config.checkpoint_every_n_steps:
             experiment.save_checkpoint(train_state, step=train_state.steps)
 
-        if train_state.steps % train_config.eval_every_n_steps == 0:
-            test_log_data = evaluate(train_state, dataloaders["test"])
+        if not train_state.steps % train_config.eval_every_n_steps:
+            test_log_data = train_state.evaluate(dataloaders["test"])
             experiment.log(test_log_data, step=train_state.steps)
 
         for batch in dataloaders["train"]:
             train_log_data = train_state.training_step(*batch)
 
             # Log to tensorboard.
-            if train_state.steps % train_config.log_every_n_steps == 0:
+            if not train_state.steps % train_config.log_every_n_steps:
                 experiment.log(train_log_data, step=train_state.steps)
 
     # Save one final checkpoint.

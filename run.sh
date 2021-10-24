@@ -10,7 +10,7 @@ do
     python train.py \
         --experiment-name $EXPERIMENT_NAME \
         --train-dataset-size $train_size \
-        --policy-type EXPLICIT_MSE \
+        --policy-type EXPLICIT \
         --coord-conv \
         --dropout-prob 0.2 \
         --weight-decay 3e-4 \

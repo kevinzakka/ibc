@@ -1,82 +1,74 @@
 from __future__ import annotations
 
-import abc
 import dataclasses
 import enum
-from typing import Type, TypeVar
+from typing import Protocol
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
+from tqdm.auto import tqdm
 
-from .experiment import TensorboardLogData
-from .models import ConvMLP, ConvMLPConfig
-
-T = TypeVar("T")
+from . import experiment, models, optimizers
 
 
 @dataclasses.dataclass
-class OptimizerConfig:
-    learning_rate: float = 1e-3
-    weight_decay: float = 0.0
-    adam_b1: float = 0.9
-    adam_b2: float = 0.999
+class TrainStateProtocol(Protocol):
+    """Functionality that needs to be implemented by all training states."""
+
+    model: nn.Module
+    device: torch.device
+    steps: int
+
+    def training_step(
+        self, input: torch.Tensor, target: torch.Tensor
+    ) -> experiment.TensorboardLogData:
+        """Performs a single training step on a mini-batch of data."""
+
+    @torch.no_grad()
+    def evaluate(
+        self, dataloader: torch.utils.data.DataLoader
+    ) -> experiment.TensorboardLogData:
+        """Performs a full evaluation of the model on one epoch."""
 
 
 @dataclasses.dataclass
-class AbstractTrainState(abc.ABC):
-    model: ConvMLP
+class ExplicitTrainState:
+    """A feedforward policy trained with a MSE objective."""
+
+    model: nn.Module
     optimizer: torch.optim.Optimizer
     device: torch.device
     steps: int
 
-    @classmethod
+    @staticmethod
     def initialize(
-        cls: Type[T],
-        model_config: ConvMLPConfig,
-        optim_config: OptimizerConfig,
+        model_config: models.ConvMLPConfig,
+        optim_config: optimizers.OptimizerConfig,
         device_type: str,
-    ) -> T:
+    ) -> ExplicitTrainState:
         device = torch.device(device_type if torch.cuda.is_available() else "cpu")
         print(f"Using device: {device}")
 
-        model = ConvMLP(config=model_config)
+        model = models.ConvMLP(config=model_config)
 
         optimizer = torch.optim.Adam(
             model.parameters(),
             lr=optim_config.learning_rate,
             weight_decay=optim_config.weight_decay,
-            betas=(optim_config.adam_b1, optim_config.adam_b2),
+            betas=(optim_config.beta1, optim_config.beta2),
         )
 
-        return cls(
+        return ExplicitTrainState(
             model=model,
             optimizer=optimizer,
             device=device,
             steps=0,
         )
 
-    @abc.abstractmethod
     def training_step(
         self, input: torch.Tensor, target: torch.Tensor
-    ) -> TensorboardLogData:
-        ...
-
-    @torch.no_grad()
-    def predict(
-        self,
-        input: torch.Tensor,
-        target: torch.Tensor,
-        reduction: str = "none",
-    ) -> torch.Tensor:
-        ...
-
-
-class ExplicitMSETrainState(AbstractTrainState):
-    """Uses an explicit feedforward continuous policy trained with MSE."""
-
-    def training_step(
-        self, input: torch.Tensor, target: torch.Tensor
-    ) -> TensorboardLogData:
+    ) -> experiment.TensorboardLogData:
         self.model.train()
 
         input = input.to(self.device)
@@ -91,44 +83,91 @@ class ExplicitMSETrainState(AbstractTrainState):
 
         self.steps += 1
 
-        return TensorboardLogData(scalars={"train/loss": loss.item()})
+        return experiment.TensorboardLogData(scalars={"train/loss": loss.item()})
 
     @torch.no_grad()
-    def predict(
-        self,
-        input: torch.Tensor,
-        target: torch.Tensor,
-        reduction: str = "none",
-    ) -> torch.Tensor:
+    def evaluate(
+        self, dataloader: torch.utils.data.DataLoader
+    ) -> experiment.TensorboardLogData:
         self.model.eval()
+
+        total_mse = 0.0
+        for input, target in tqdm(dataloader, leave=False):
+            input = input.to(self.device)
+            target = target.to(self.device)
+
+            out = self.model(input)
+            mse = F.mse_loss(out, target, reduction="none")
+            total_mse += mse.mean(dim=-1).sum().item()
+
+        mean_mse = total_mse / len(dataloader.dataset)
+        return experiment.TensorboardLogData(scalars={"test/mse": mean_mse})
+
+
+@dataclasses.dataclass
+class ImplicitTrainState:
+    """A conditional EBM trained with an InfoNCE objective."""
+
+    model: nn.Module
+    optimizer: torch.optim.Optimizer
+    stochastic_optimizer: optimizers.StochasticOptimizer
+    device: torch.device
+    steps: int
+
+    @staticmethod
+    def initialize(
+        model_config: models.ConvMLPConfig,
+        optim_config: optimizers.OptimizerConfig,
+        sotchastic_optim_config: optimizers.StochasticOptimizerConfig,
+        device_type: str,
+    ) -> ExplicitTrainState:
+        device = torch.device(device_type if torch.cuda.is_available() else "cpu")
+        print(f"Using device: {device}")
+
+        model = models.ConvMLP(config=model_config)
+
+        optimizer = torch.optim.Adam(
+            model.parameters(),
+            lr=optim_config.learning_rate,
+            weight_decay=optim_config.weight_decay,
+            betas=(optim_config.beta1, optim_config.beta2),
+        )
+
+        return ImplicitTrainState(
+            model=model,
+            optimizer=optimizer,
+            stochastic_optimizer=stochastic_optimizer,
+            device=device,
+            steps=0,
+        )
+
+    def training_step(
+        self, input: torch.Tensor, target: torch.Tensor
+    ) -> experiment.TensorboardLogData:
+        self.model.train()
 
         input = input.to(self.device)
         target = target.to(self.device)
 
-        prediction = self.model(input)
-        mean_squared_error = F.mse_loss(prediction, target, reduction=reduction)
+        # Generate counter-examples.
+        negatives = self.stochastic_optimizer.sample(target)
 
-        return mean_squared_error
+        out = self.model(input, target, negatives)
 
+        loss = None  # info-nce loss
 
-class ImplicitEBMTrainState(AbstractTrainState):
-    """Uses an implicit conditional EBM trained with an InfoNCE loss."""
+        self.optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        self.optimizer.step()
 
-    def training_step(
-        self, input: torch.Tensor, target: torch.Tensor
-    ) -> TensorboardLogData:
-        raise NotImplementedError
+        self.steps += 1
 
-    @torch.no_grad()
-    def predict(
-        self,
-        input: torch.Tensor,
-        target: torch.Tensor,
-        reduction: str = "none",
-    ) -> torch.Tensor:
-        raise NotImplementedError
+        return experiment.TensorboardLogData(scalars={"train/loss": loss.item()})
 
 
 class PolicyType(enum.Enum):
-    EXPLICIT_MSE = ExplicitMSETrainState
-    IMPLICIT_EBM = ImplicitEBMTrainState
+    EXPLICIT = ExplicitTrainState
+    """An explicit policy is a feedforward structure trained with a MSE objective."""
+
+    IMPLICIT = ImplicitTrainState
+    """An implicit policy is a conditional EBM trained with an InfoNCE objective."""

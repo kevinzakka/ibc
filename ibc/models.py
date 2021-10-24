@@ -6,13 +6,12 @@ from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 
-from .modules import (CoordConv, GlobalAvgPool2d, GlobalMaxPool2d,
-                      SpatialSoftArgmax)
+from .modules import CoordConv, GlobalAvgPool2d, GlobalMaxPool2d, SpatialSoftArgmax
 
 
 class ActivationType(enum.Enum):
-    RELU = partial(nn.ReLU, inplace=False)
-    SELU = partial(nn.SiLU, inplace=False)
+    RELU = nn.ReLU
+    SELU = nn.SiLU
 
 
 @dataclasses.dataclass(frozen=True)
