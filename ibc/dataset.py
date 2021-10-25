@@ -45,13 +45,7 @@ class CoordinateRegression(Dataset):
             np.random.seed(self.seed)
 
         self._coordinates = self._sample_coordinates(self.dataset_size)
-
-        # Store normalized coordinates in the range [-1, 1].
-        self._coordinates_scaled = np.array(self._coordinates, dtype=np.float32)
-        self._coordinates_scaled[:, 0] /= self.resolution[0] - 1
-        self._coordinates_scaled[:, 1] /= self.resolution[1] - 1
-        self._coordinates_scaled *= 2
-        self._coordinates_scaled -= 1
+        self._coordinates_scaled = self._scale_coordinates(self._coordinates)
 
     def exclude(self, coordinates: np.ndarray) -> None:
         """Exclude the given coordinates, if present, from the previously sampled ones.
@@ -64,6 +58,7 @@ class CoordinateRegression(Dataset):
         while mask.sum() > 0:
             self._coordinates[mask] = self._sample_coordinates(mask.sum())
             mask = (self.coordinates[:, None] == coordinates).all(-1).any(1)
+        self._coordinates_scaled = self._scale_coordinates(self._coordinates)
         print(f"Resampled {num_matches} data points.")
 
     def get_target_bounds(self) -> np.ndarray:
@@ -88,6 +83,15 @@ class CoordinateRegression(Dataset):
 
         return np.vstack([u, v]).astype(np.int16).T
 
+    def _scale_coordinates(self, coords: np.ndarray) -> np.ndarray:
+        """Helper method for scaling coordinates to the [-1, 1] range."""
+        coords_scaled = np.array(coords, dtype=np.float32)
+        coords_scaled[:, 0] /= self.resolution[0] - 1
+        coords_scaled[:, 1] /= self.resolution[1] - 1
+        coords_scaled *= 2
+        coords_scaled -= 1
+        return coords_scaled
+
     @property
     def image_shape(self) -> Tuple[int, int, int]:
         return self.resolution + (3,)
@@ -105,6 +109,7 @@ class CoordinateRegression(Dataset):
 
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
         uv = self._coordinates[index]
+        uv_scaled = self._coordinates_scaled[index]
 
         image = np.full(self.image_shape, fill_value=255, dtype=np.uint8)
         image[
@@ -113,7 +118,7 @@ class CoordinateRegression(Dataset):
         ] = self.pixel_color
 
         image = ToTensor()(image)
-        target = torch.as_tensor(uv, dtype=torch.float32)
+        target = torch.as_tensor(uv_scaled, dtype=torch.float32)
 
         return image, target
 
@@ -121,7 +126,7 @@ class CoordinateRegression(Dataset):
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
-    dataset = CoordinateRegression(DatasetConfig(dataset_size=10_000))
+    dataset = CoordinateRegression(DatasetConfig(dataset_size=100))
 
     # Visualize one instance.
     image, target = dataset[np.random.randint(len(dataset))]
