@@ -24,8 +24,8 @@ pip install -r requirements.txt
 
 |             | Explicit Policy | Implicit Policy |
 |-------------|-----------------|-----------------|
-| 10 examples |<img src="assets/explicit_mse_10.png" width="300" height="200"/>|                 |
-| 30 examples |<img src="assets/explicit_mse_30.png" width="300" height="200"/>|                 |
+| 10 examples |<img src="assets/explicit_mse_10.png" width="300" height="200"/>|<img src="assets/implicit_ebm_10.png" width="300" height="200"/>|
+| 30 examples |<img src="assets/explicit_mse_30.png" width="300" height="200"/>|<img src="assets/implicit_ebm_30.png" width="300" height="200"/>|
 
 ## Citation
 

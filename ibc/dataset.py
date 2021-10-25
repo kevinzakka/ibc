@@ -87,7 +87,8 @@ class CoordinateRegression(Dataset):
         )
 
         # Standardize bounds.
-        bounds = (bounds - self.transform[0]) / self.transform[1]
+        if self.transform is not None:
+            bounds = (bounds - self.transform[0]) / self.transform[1]
 
         return bounds
 

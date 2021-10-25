@@ -33,10 +33,9 @@ def eval(
         prediction = train_state.predict(input).cpu().numpy()
         target = target.cpu().numpy()
         mean, std = dataloaders["train"].dataset.transform
-        err = np.linalg.norm(
-            (prediction * std + mean) - (target * std + mean),
-            axis=1,
-        )
+        prediction = prediction * std + mean
+        target = target * std + mean
+        err = np.linalg.norm(prediction - target, axis=1)
         errors.append(err)
     test_coords = dataloaders["test"].dataset.coordinates
     train_coords = dataloaders["train"].dataset.coordinates
