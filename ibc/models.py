@@ -6,8 +6,7 @@ from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 
-from .modules import (CoordConv, GlobalAvgPool2d, GlobalMaxPool2d,
-                      SpatialSoftArgmax)
+from .modules import CoordConv, GlobalAvgPool2d, GlobalMaxPool2d, SpatialSoftArgmax
 
 
 class ActivationType(enum.Enum):
@@ -169,6 +168,29 @@ class ConvMLP(nn.Module):
             x = CoordConv()(x)
         out = self.cnn(x, activate=True)
         out = self.reducer(out)
+        out = self.mlp(out)
+        return out
+
+
+class EBMConvMLP(nn.Module):
+    def __init__(self, config: ConvMLPConfig) -> None:
+        super().__init__()
+
+        self.coord_conv = config.coord_conv
+
+        self.cnn = CNN(config.cnn_config)
+        self.reducer = config.spatial_reduction.value()
+        self.mlp = MLP(config.mlp_config)
+
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        if self.coord_conv:
+            x = CoordConv()(x)
+        out = self.cnn(x, activate=True)
+        out = self.reducer(out)
+        # Concatenate target with input encoding.
+        # x: B, C, H, W --> out: B, N
+        # y: B, D
+        out = out + y
         out = self.mlp(out)
         return out
 

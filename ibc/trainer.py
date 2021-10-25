@@ -32,7 +32,7 @@ class TrainStateProtocol(Protocol):
 
 @dataclasses.dataclass
 class ExplicitTrainState:
-    """A feedforward policy trained with a MSE objective."""
+    """An explicit feedforward policy trained with a MSE objective."""
 
     model: nn.Module
     optimizer: torch.optim.Optimizer
@@ -104,7 +104,7 @@ class ExplicitTrainState:
 
 @dataclasses.dataclass
 class ImplicitTrainState:
-    """A conditional EBM trained with an InfoNCE objective."""
+    """An implicit conditional EBM trained with an InfoNCE objective."""
 
     model: nn.Module
     optimizer: torch.optim.Optimizer
@@ -116,7 +116,7 @@ class ImplicitTrainState:
     def initialize(
         model_config: models.ConvMLPConfig,
         optim_config: optimizers.OptimizerConfig,
-        sotchastic_optim_type: optimizers.StochasticOptimizerType,
+        stochastic_optim_config: optimizers.StochasticOptimizerConfig,
         device_type: str,
     ) -> ExplicitTrainState:
         device = torch.device(device_type if torch.cuda.is_available() else "cpu")
@@ -131,7 +131,9 @@ class ImplicitTrainState:
             betas=(optim_config.beta1, optim_config.beta2),
         )
 
-        stochastic_optimizer = None
+        stochastic_optimizer = optimizers.DerivativeFreeOptimizer.initialize(
+            stochastic_optim_config, device_type,
+        )
 
         return ImplicitTrainState(
             model=model,
@@ -150,7 +152,18 @@ class ImplicitTrainState:
         target = target.to(self.device)
 
         # Generate counter-examples.
-        negatives = self.stochastic_optimizer.sample(target)
+        negatives = self.stochastic_optimizer.sample(input.size(0), self.model)
+
+        # input: B, 3, H, W
+        # input feats: B, L
+        # target: B, D
+        # negatives: B, N, D
+        # concat negatives + target -> B, N+1, D
+        # tile input -> B, N, L
+        #
+
+        from ipdb import set_trace
+        set_trace()
 
         out = self.model(input, target, negatives)
 
@@ -163,6 +176,13 @@ class ImplicitTrainState:
         self.steps += 1
 
         return experiment.TensorboardLogData(scalars={"train/loss": loss.item()})
+
+    @torch.no_grad()
+    def evaluate(
+        self, dataloader: torch.utils.data.DataLoader
+    ) -> experiment.TensorboardLogData:
+        self.model.eval()
+        return experiment.TensorboardLogData(scalars={"test/mse": 0.})
 
 
 class PolicyType(enum.Enum):

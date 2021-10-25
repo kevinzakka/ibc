@@ -59,7 +59,7 @@ class CoordinateRegression(Dataset):
             mask = (self.coordinates[:, None] == coordinates).all(-1).any(1)
         print(f"Resampled {num_matches} data points.")
 
-    def get_target_bounds(self, percent: float = 0.05) -> np.ndarray:
+    def get_target_bounds(self, percent: float = 0.05) -> torch.Tensor:
         """Return per-dimension target min/max plus or minus a small buffer.
 
         This is described in Section B of the supplemental.
@@ -81,7 +81,7 @@ class CoordinateRegression(Dataset):
             bounds[:, 1], a_min=slack, a_max=self.resolution[1] - 1 - slack
         )
 
-        return bounds
+        return torch.as_tensor(bounds, dtype=torch.float32)
 
     def _sample_coordinates(self, size: int) -> np.ndarray:
         """Helper method for generating pixel coordinates."""
@@ -144,4 +144,5 @@ if __name__ == "__main__":
     plt.ylim(0 - 2, dataset.resolution[0] + 2)
     plt.show()
 
-    print(f"Target bounds: {dataset.get_target_bounds().tolist()}")
+    print(f"Target bounds:")
+    print(dataset.get_target_bounds())
