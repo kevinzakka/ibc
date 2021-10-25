@@ -13,9 +13,9 @@ do
         --policy-type IMPLICIT \
         --dropout-prob 0. \
         --weight-decay 0. \
-        --max-epochs 8000 \
+        --max-epochs 3000 \
         --learning-rate 1e-3 \
         --spatial-reduction SPATIAL_SOFTMAX \
 
-        python plot.py --experiment-name $EXPERIMENT_NAME
+    python plot.py --experiment-name $EXPERIMENT_NAME
 done

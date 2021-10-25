@@ -5,6 +5,7 @@ import pathlib
 from typing import Dict, Tuple
 
 import dcargs
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -19,29 +20,46 @@ from train import TrainConfig, make_dataloaders, make_train_state
 @dataclasses.dataclass
 class Args:
     experiment_name: str
-    plot_dir: str = "plots"
+    plot_dir: str = "assets"
     dpi: int = 200
+    threshold: float = 30
 
 
 def eval(
     train_state: TrainStateProtocol,
     dataloaders: Dict[str, torch.utils.data.DataLoader],
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    errors = []
+    total_mse = 0.0
+    pixel_error = []
     for batch in tqdm(dataloaders["test"]):
         input, target = batch
         prediction = train_state.predict(input).cpu().numpy()
         target = target.cpu().numpy()
-        mean, std = dataloaders["train"].dataset.transform
-        prediction = prediction * std + mean
-        target = target * std + mean
-        err = np.linalg.norm(prediction - target, axis=1)
-        errors.append(err)
+
+        pred_unscaled = np.array(prediction)
+        pred_unscaled += 1
+        pred_unscaled /= 2
+        pred_unscaled[:, 0] *= dataloaders["test"].dataset.resolution[0]
+        pred_unscaled[:, 1] *= dataloaders["test"].dataset.resolution[1]
+
+        target_unscaled = np.array(target)
+        target_unscaled += 1
+        target_unscaled /= 2
+        target_unscaled[:, 0] *= dataloaders["test"].dataset.resolution[0]
+        target_unscaled[:, 1] *= dataloaders["test"].dataset.resolution[1]
+
+        diff = pred_unscaled - target_unscaled
+        pixel_error.append(np.linalg.norm(diff, axis=1))
+        total_mse += (diff ** 2).mean(axis=1).sum()
+
+    average_mse = total_mse / len(dataloaders["test"].dataset)
+    print(f"Test set MSE: {average_mse}")
+
+    pixel_error = np.concatenate(pixel_error)
     test_coords = dataloaders["test"].dataset.coordinates
     train_coords = dataloaders["train"].dataset.coordinates
-    errors = np.concatenate(errors)
-    print(f"Test set MSE: {np.square(errors).mean()}")
-    return train_coords, test_coords, errors
+
+    return train_coords, test_coords, pixel_error
 
 
 def plot(
@@ -51,7 +69,13 @@ def plot(
     resolution: Tuple[int, int],
     plot_path: pathlib.Path,
     dpi: int,
+    threshold: float,
 ) -> None:
+    # Threshold the errors so that all generated plot colors cover the same range.
+    errors[errors >= threshold] = threshold
+    colormap = plt.cm.Reds
+    normalize = matplotlib.colors.Normalize(vmin=0, vmax=threshold)
+
     plt.scatter(
         train_coords[:, 0],
         train_coords[:, 1],
@@ -64,7 +88,8 @@ def plot(
         test_coords[:, 0],
         test_coords[:, 1],
         c=errors,
-        cmap="Reds",
+        cmap=colormap,
+        norm=normalize,
         zorder=1,
     )
     plt.colorbar()
@@ -127,6 +152,7 @@ def main(args: Args):
         dataloaders["test"].dataset.resolution,
         plot_dir / f"{args.experiment_name}.png",
         args.dpi,
+        args.threshold,
     )
 
 

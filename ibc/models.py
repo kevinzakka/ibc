@@ -55,18 +55,6 @@ class MLP(nn.Module):
 
         self.net = nn.Sequential(*layers)
 
-        # Weight initialization.
-        def weight_init(m: nn.Module) -> None:
-            if isinstance(m, nn.Linear):
-                nn.init.kaiming_normal_(
-                    m.weight,
-                    mode="fan_in",
-                    nonlinearity=config.activation_fn.name.lower(),
-                )
-                nn.init.constant_(m.bias, 0.0)
-
-        self.apply(weight_init)
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
 
@@ -79,8 +67,8 @@ class ResidualBlock(nn.Module):
     ) -> None:
         super().__init__()
 
-        self.conv1 = nn.Conv2d(depth, depth, 3, padding=1)
-        self.conv2 = nn.Conv2d(depth, depth, 3, padding=1)
+        self.conv1 = nn.Conv2d(depth, depth, 3, padding=1, bias=True)
+        self.conv2 = nn.Conv2d(depth, depth, 3, padding=1, bias=True)
         self.activation = activation_fn.value()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -113,25 +101,12 @@ class CNN(nn.Module):
                     nn.Conv2d(depth_in, depth_out, 3, padding=1),
                     nn.MaxPool2d(3, stride=2, padding=1),
                     ResidualBlock(depth_out, config.activation_fn),
-                    ResidualBlock(depth_out, config.activation_fn),
                 ]
             )
             depth_in = depth_out
 
         self.net = nn.Sequential(*layers)
         self.activation = config.activation_fn.value()
-
-        # Weight initialization.
-        def weight_init(m: nn.Module) -> None:
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(
-                    m.weight,
-                    mode="fan_in",
-                    nonlinearity=config.activation_fn.name.lower(),
-                )
-                nn.init.constant_(m.bias, 0.0)
-
-        self.apply(weight_init)
 
     def forward(self, x: torch.Tensor, activate: bool = False) -> torch.Tensor:
         out = self.net(x)
