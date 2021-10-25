@@ -11,8 +11,8 @@ from .modules import (CoordConv, GlobalAvgPool2d, GlobalMaxPool2d,
 
 
 class ActivationType(enum.Enum):
-    RELU = partial(nn.ReLU, inplace=False)
-    SELU = partial(nn.SiLU, inplace=False)
+    RELU = nn.ReLU
+    SELU = nn.SiLU
 
 
 @dataclasses.dataclass(frozen=True)
@@ -171,6 +171,28 @@ class ConvMLP(nn.Module):
         out = self.reducer(out)
         out = self.mlp(out)
         return out
+
+
+class EBMConvMLP(nn.Module):
+    def __init__(self, config: ConvMLPConfig) -> None:
+        super().__init__()
+
+        self.coord_conv = config.coord_conv
+
+        self.cnn = CNN(config.cnn_config)
+        self.reducer = config.spatial_reduction.value()
+        self.mlp = MLP(config.mlp_config)
+
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        if self.coord_conv:
+            x = CoordConv()(x)
+        out = self.cnn(x, activate=True)
+        out = self.reducer(out)
+        fused = torch.cat([out.unsqueeze(1).expand(-1, y.size(1), -1), y], dim=-1)
+        B, N, D = fused.size()
+        fused = fused.reshape(B * N, D)
+        out = self.mlp(fused)
+        return out.view(B, N)
 
 
 if __name__ == "__main__":
