@@ -14,11 +14,11 @@ pip install -r requirements.txt
 * [x] Implement the coordinate regression task.
 * [x] Implement an explicit policy.
 * [x] Generate plot like in Figure 4.
-* [ ] Implement an implicit EBM model.
+* [x] Implement an implicit EBM model.
     * [x] Derivative-free sampler.
     * [x] `TrainState` for EBM training.
     * [x] Model class for ingesting both x and y.
-    * [ ] Langevin dynamics.
+* [ ] Implement Langevin dynamics.
 
 ## Results
 

@@ -29,6 +29,9 @@ class TrainStateProtocol(Protocol):
     ) -> experiment.TensorboardLogData:
         """Performs a full evaluation of the model on one epoch."""
 
+    def predict(self, input: torch.Tensor) -> torch.Tensor:
+        """Performs a single inference step on a mini-batch of data."""
+
 
 @dataclasses.dataclass
 class ExplicitTrainState:
