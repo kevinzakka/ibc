@@ -64,7 +64,7 @@ class CoordinateRegression(Dataset):
     def get_target_statistics(self) -> Tuple[np.ndarray, np.ndarray]:
         return self.coordinates.mean(axis=0), self.coordinates.std(axis=0)
 
-    def get_target_bounds(self, percent: float = 0.05) -> torch.Tensor:
+    def get_target_bounds(self, percent: float = 0.05) -> np.ndarray:
         """Return per-dimension target min/max plus or minus a small buffer.
 
         This is described in Section B of the supplemental.
@@ -86,7 +86,10 @@ class CoordinateRegression(Dataset):
             bounds[:, 1], a_min=slack, a_max=self.resolution[1] - 1 - slack
         )
 
-        return torch.as_tensor(bounds, dtype=torch.float32)
+        # Standardize bounds.
+        bounds = (bounds - self.transform[0]) / self.transform[1]
+
+        return bounds
 
     def set_transform(self, means: np.ndarray, std_devs: np.ndarray) -> None:
         self.transform = (means, std_devs)

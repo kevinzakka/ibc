@@ -41,6 +41,7 @@ def eval(
     test_coords = dataloaders["test"].dataset.coordinates
     train_coords = dataloaders["train"].dataset.coordinates
     errors = np.concatenate(errors)
+    print(f"Test set MSE: {np.square(errors).mean()}")
     return train_coords, test_coords, errors
 
 

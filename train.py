@@ -31,7 +31,7 @@ class TrainConfig:
     cudnn_benchmark: bool = True
     log_every_n_steps: int = 10
     checkpoint_every_n_steps: int = 100
-    eval_every_n_steps: int = 50
+    eval_every_n_steps: int = 200
     target_bounds_percent: float = 0.05
     policy_type: trainer.PolicyType = trainer.PolicyType.EXPLICIT
 

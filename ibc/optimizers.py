@@ -20,6 +20,8 @@ class OptimizerConfig:
     weight_decay: float = 0.0
     beta1: float = 0.9
     beta2: float = 0.999
+    lr_scheduler_step: int = 100
+    lr_scheduler_gamma: float = 0.99
 
 
 # =================================================================== #
@@ -29,7 +31,7 @@ class OptimizerConfig:
 
 @dataclasses.dataclass
 class StochasticOptimizerConfig:
-    bounds: torch.Tensor
+    bounds: np.ndarray
     """Bounds on the samples, min/max for each dimension."""
 
     iters: int
@@ -65,7 +67,7 @@ class DerivativeFreeConfig(StochasticOptimizerConfig):
 
 @dataclasses.dataclass
 class DerivativeFreeOptimizer:
-    """A simple derivative-free optimizer."""
+    """A simple derivative-free optimizer. Great for up to 5 dimensions."""
 
     device: torch.device
     noise_scale: float
@@ -73,7 +75,7 @@ class DerivativeFreeOptimizer:
     iters: int
     train_samples: int
     inference_samples: int
-    bounds: torch.Tensor
+    bounds: np.ndarray
 
     @staticmethod
     def initialize(
@@ -104,22 +106,32 @@ class DerivativeFreeOptimizer:
     @torch.no_grad()
     def infer(self, x: torch.Tensor, ebm: nn.Module) -> torch.Tensor:
         """Optimize for the best action given a trained EBM."""
-        # Initialize samples and noise scales.
         noise_scale = self.noise_scale
-        samples = self._sample(self.inference_samples)
-        return samples
-        # for i in range(self.iters):
-        #     # Compute energies.
-        #     energies = ebm(x, samples)
-        #     probs = F.softmax(energies, dim=-1)
-        #     # Resample with replacement.
-        #     idxs = torch.multinomial(probs, self.inference_samples, replacement=True)
-        #     samples = samples[idxs]
-        #     # Add noise.
-        #     samples = samples + 1
-        #     # Clip to target bounds.
-        #     noise_scale *= self.noise_shrink
+        bounds = torch.as_tensor(self.bounds).to(self.device)
+
+        samples = self._sample(x.size(0) * self.inference_samples)
+        samples = samples.reshape(x.size(0), self.inference_samples, -1)
+
+        for i in range(self.iters):
+            # Compute energies.
+            energies = ebm(x, samples)
+            probs = F.softmax(-1.0 * energies, dim=-1)
+
+            # Resample with replacement.
+            idxs = torch.multinomial(probs, self.inference_samples, replacement=True)
+            samples = samples[torch.arange(samples.size(0)).unsqueeze(-1), idxs]
+
+            # Add noise and clip to target bounds.
+            samples = samples + torch.randn_like(samples) * noise_scale
+            samples = samples.clamp(min=bounds[0, :], max=bounds[1, :])
+
+            noise_scale *= self.noise_shrink
+
         # Return target with highest probability.
+        energies = ebm(x, samples)
+        probs = F.softmax(-1.0 * energies, dim=-1)
+        best_idxs = probs.argmax(dim=-1)
+        return samples[torch.arange(samples.size(0)), best_idxs, :]
 
 
 class StochasticOptimizerType(enum.Enum):

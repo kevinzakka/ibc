@@ -15,10 +15,10 @@ pip install -r requirements.txt
 * [x] Implement an explicit policy.
 * [x] Generate plot like in Figure 4.
 * [ ] Implement an implicit EBM model.
-    * [ ] Derivative-free sampler.
+    * [x] Derivative-free sampler.
+    * [x] `TrainState` for EBM training.
+    * [x] Model class for ingesting both x and y.
     * [ ] Langevin dynamics.
-    * [ ] `TrainState` for EBM training.
-    * [ ] Model class for ingesting both x and y.
 
 ## Results
 

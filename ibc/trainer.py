@@ -36,6 +36,7 @@ class ExplicitTrainState:
 
     model: nn.Module
     optimizer: torch.optim.Optimizer
+    scheduler: torch.optim.lr_scheduler._LRScheduler
     device: torch.device
     steps: int
 
@@ -49,6 +50,7 @@ class ExplicitTrainState:
         print(f"Using device: {device}")
 
         model = models.ConvMLP(config=model_config)
+        model.to(device)
 
         optimizer = torch.optim.Adam(
             model.parameters(),
@@ -57,9 +59,16 @@ class ExplicitTrainState:
             betas=(optim_config.beta1, optim_config.beta2),
         )
 
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer,
+            step_size=optim_config.lr_scheduler_step,
+            gamma=optim_config.lr_scheduler_gamma,
+        )
+
         return ExplicitTrainState(
             model=model,
             optimizer=optimizer,
+            scheduler=scheduler,
             device=device,
             steps=0,
         )
@@ -78,10 +87,16 @@ class ExplicitTrainState:
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
         self.optimizer.step()
+        self.scheduler.step()
 
         self.steps += 1
 
-        return experiment.TensorboardLogData(scalars={"train/loss": loss.item()})
+        return experiment.TensorboardLogData(
+            scalars={
+                "train/loss": loss.item(),
+                "train/learning_rate": self.scheduler.get_last_lr()[0],
+            }
+        )
 
     @torch.no_grad()
     def evaluate(
@@ -113,6 +128,7 @@ class ImplicitTrainState:
 
     model: nn.Module
     optimizer: torch.optim.Optimizer
+    scheduler: torch.optim.lr_scheduler._LRScheduler
     stochastic_optimizer: optimizers.StochasticOptimizer
     device: torch.device
     steps: int
@@ -128,12 +144,19 @@ class ImplicitTrainState:
         print(f"Using device: {device}")
 
         model = models.EBMConvMLP(config=model_config)
+        model.to(device)
 
         optimizer = torch.optim.Adam(
             model.parameters(),
             lr=optim_config.learning_rate,
             weight_decay=optim_config.weight_decay,
             betas=(optim_config.beta1, optim_config.beta2),
+        )
+
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer,
+            step_size=optim_config.lr_scheduler_step,
+            gamma=optim_config.lr_scheduler_gamma,
         )
 
         stochastic_optimizer = optimizers.DerivativeFreeOptimizer.initialize(
@@ -144,6 +167,7 @@ class ImplicitTrainState:
         return ImplicitTrainState(
             model=model,
             optimizer=optimizer,
+            scheduler=scheduler,
             stochastic_optimizer=stochastic_optimizer,
             device=device,
             steps=0,
@@ -169,7 +193,7 @@ class ImplicitTrainState:
 
         # Get the original index of the positive. This will serve as the class label
         # for the loss.
-        ground_truth = (permutation == 0).nonzero()[:, 1]
+        ground_truth = (permutation == 0).nonzero()[:, 1].to(self.device)
 
         # For every element in the mini-batch, there is 1 positive for which the EBM
         # should output a low energy value, and N negatives for which the EBM should
@@ -184,17 +208,40 @@ class ImplicitTrainState:
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
         self.optimizer.step()
+        self.scheduler.step()
 
         self.steps += 1
 
-        return experiment.TensorboardLogData(scalars={"train/loss": loss.item()})
+        return experiment.TensorboardLogData(
+            scalars={
+                "train/loss": loss.item(),
+                "train/learning_rate": self.scheduler.get_last_lr()[0],
+            }
+        )
 
     @torch.no_grad()
     def evaluate(
         self, dataloader: torch.utils.data.DataLoader
     ) -> experiment.TensorboardLogData:
         self.model.eval()
-        return experiment.TensorboardLogData(scalars={"test/mse": 0.0})
+
+        total_mse = 0.0
+        for input, target in tqdm(dataloader, leave=False):
+            input = input.to(self.device)
+            target = target.to(self.device)
+
+            out = self.stochastic_optimizer.infer(input, self.model)
+
+            mse = F.mse_loss(out, target, reduction="none")
+            total_mse += mse.mean(dim=-1).sum().item()
+
+        mean_mse = total_mse / len(dataloader.dataset)
+        return experiment.TensorboardLogData(scalars={"test/mse": mean_mse})
+
+    @torch.no_grad()
+    def predict(self, input: torch.Tensor) -> torch.Tensor:
+        self.model.eval()
+        return self.stochastic_optimizer.infer(input.to(self.device), self.model)
 
 
 class PolicyType(enum.Enum):

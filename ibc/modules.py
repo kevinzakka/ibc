@@ -36,7 +36,7 @@ class SpatialSoftArgmax(nn.Module):
     dimension.
     """
 
-    def __init__(self, normalize: bool = False) -> None:
+    def __init__(self, normalize: bool = True) -> None:
         super().__init__()
 
         self.normalize = normalize
