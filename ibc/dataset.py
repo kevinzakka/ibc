@@ -48,8 +48,8 @@ class CoordinateRegression(Dataset):
 
         # Store normalized coordinates in the range [-1, 1].
         self._coordinates_scaled = np.array(self._coordinates, dtype=np.float32)
-        self._coordinates_scaled[:, 0] /= (self.resolution[0] - 1)
-        self._coordinates_scaled[:, 1] /= (self.resolution[1] - 1)
+        self._coordinates_scaled[:, 0] /= self.resolution[0] - 1
+        self._coordinates_scaled[:, 1] /= self.resolution[1] - 1
         self._coordinates_scaled *= 2
         self._coordinates_scaled -= 1
 
@@ -68,10 +68,12 @@ class CoordinateRegression(Dataset):
 
     def get_target_bounds(self) -> np.ndarray:
         """Return per-dimension target min/max."""
-        return np.vstack([
-            self.coordinates_scaled.min(axis=0),
-            self.coordinates_scaled.max(axis=0),
-        ])
+        return np.vstack(
+            [
+                self.coordinates_scaled.min(axis=0),
+                self.coordinates_scaled.max(axis=0),
+            ]
+        )
 
     def _sample_coordinates(self, size: int) -> np.ndarray:
         """Helper method for generating pixel coordinates."""
