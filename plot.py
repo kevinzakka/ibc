@@ -12,7 +12,7 @@ from scipy.spatial import ConvexHull
 from tqdm.auto import tqdm
 
 from ibc.experiment import Experiment
-from ibc.trainer import AbstractTrainState
+from ibc.trainer import TrainStateProtocol
 from train import TrainConfig, make_dataloaders, make_train_state
 
 
@@ -24,28 +24,30 @@ class Args:
 
 
 def eval(
-    train_state: AbstractTrainState,
+    train_state: TrainStateProtocol,
     dataloaders: Dict[str, torch.utils.data.DataLoader],
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    test_coords = []
-    mses = []
+    errors = []
     for batch in tqdm(dataloaders["test"]):
         input, target = batch
-        mean_squared_error = train_state.predict(input, target)
-        test_coords.append(target.cpu().numpy())
-        mses.append(mean_squared_error.mean(dim=-1).cpu().numpy())
-
-    test_coords = np.concatenate(test_coords)
+        prediction = train_state.predict(input).cpu().numpy()
+        target = target.cpu().numpy()
+        mean, std = dataloaders["train"].dataset.transform
+        err = np.linalg.norm(
+            (prediction * std + mean) - (target * std + mean),
+            axis=1,
+        )
+        errors.append(err)
+    test_coords = dataloaders["test"].dataset.coordinates
     train_coords = dataloaders["train"].dataset.coordinates
-    mses = np.concatenate(mses)
-
-    return train_coords, test_coords, mses
+    errors = np.concatenate(errors)
+    return train_coords, test_coords, errors
 
 
 def plot(
     train_coords: np.ndarray,
     test_coords: np.ndarray,
-    mses: np.ndarray,
+    errors: np.ndarray,
     resolution: Tuple[int, int],
     plot_path: pathlib.Path,
     dpi: int,
@@ -61,14 +63,14 @@ def plot(
     plt.scatter(
         test_coords[:, 0],
         test_coords[:, 1],
-        c=mses,
+        c=errors,
         cmap="Reds",
         zorder=1,
     )
     plt.colorbar()
 
     # Find index of predictions with less than 1 pixel error and color them in blue.
-    idxs = mses < 1.0
+    idxs = errors < 1.0
     plt.scatter(
         test_coords[idxs, 0],
         test_coords[idxs, 1],
@@ -109,19 +111,19 @@ def main(args: Args):
     train_config = experiment.read_metadata("config", TrainConfig)
 
     # Restore training state.
-    train_state = make_train_state(train_config)
+    dataloaders = make_dataloaders(train_config)
+    train_state = make_train_state(train_config, dataloaders["train"])
     experiment.restore_checkpoint(train_state)
     print(f"Loaded checkpoint at step: {train_state.steps}.")
 
     # Compute MSE for every test set data point.
-    dataloaders = make_dataloaders(train_config)
-    train_coords, test_coords, mses = eval(train_state, dataloaders)
+    train_coords, test_coords, errors = eval(train_state, dataloaders)
 
     # Plot and dump to disk.
     plot(
         train_coords,
         test_coords,
-        mses,
+        errors,
         dataloaders["test"].dataset.resolution,
         plot_dir / f"{args.experiment_name}.png",
         args.dpi,

@@ -6,7 +6,8 @@ from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 
-from .modules import CoordConv, GlobalAvgPool2d, GlobalMaxPool2d, SpatialSoftArgmax
+from .modules import (CoordConv, GlobalAvgPool2d, GlobalMaxPool2d,
+                      SpatialSoftArgmax)
 
 
 class ActivationType(enum.Enum):
@@ -187,12 +188,11 @@ class EBMConvMLP(nn.Module):
             x = CoordConv()(x)
         out = self.cnn(x, activate=True)
         out = self.reducer(out)
-        # Concatenate target with input encoding.
-        # x: B, C, H, W --> out: B, N
-        # y: B, D
-        out = out + y
-        out = self.mlp(out)
-        return out
+        fused = torch.cat([out.unsqueeze(1).expand(-1, y.size(1), -1), y], dim=-1)
+        B, N, D = fused.size()
+        fused = fused.reshape(B * N, D)
+        out = self.mlp(fused)
+        return out.view(B, N)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 import torch
+import torchvision
 from torch.utils.data import Dataset
 from torchvision.transforms import ToTensor
 
@@ -37,6 +38,7 @@ class CoordinateRegression(Dataset):
         self.pixel_size = config.pixel_size
         self.pixel_color = config.pixel_color
         self.seed = config.seed
+        self.transform = None
 
         self.reset()
 
@@ -58,6 +60,9 @@ class CoordinateRegression(Dataset):
             self._coordinates[mask] = self._sample_coordinates(mask.sum())
             mask = (self.coordinates[:, None] == coordinates).all(-1).any(1)
         print(f"Resampled {num_matches} data points.")
+
+    def get_target_statistics(self) -> Tuple[np.ndarray, np.ndarray]:
+        return self.coordinates.mean(axis=0), self.coordinates.std(axis=0)
 
     def get_target_bounds(self, percent: float = 0.05) -> torch.Tensor:
         """Return per-dimension target min/max plus or minus a small buffer.
@@ -82,6 +87,9 @@ class CoordinateRegression(Dataset):
         )
 
         return torch.as_tensor(bounds, dtype=torch.float32)
+
+    def set_transform(self, means: np.ndarray, std_devs: np.ndarray) -> None:
+        self.transform = (means, std_devs)
 
     def _sample_coordinates(self, size: int) -> np.ndarray:
         """Helper method for generating pixel coordinates."""
@@ -119,6 +127,9 @@ class CoordinateRegression(Dataset):
         image = ToTensor()(image)
         target = torch.as_tensor(uv, dtype=torch.float32)
 
+        if self.transform is not None:
+            target = ((target - self.transform[0]) / self.transform[1]).float()
+
         return image, target
 
 
@@ -134,11 +145,7 @@ if __name__ == "__main__":
     plt.show()
 
     # Plot target distribution.
-    targets = []
-    for _, target in dataset:
-        targets.append(target.numpy())
-    targets = np.asarray(targets)
-
+    targets = dataset.coordinates
     plt.scatter(targets[:, 0], targets[:, 1], marker="x", c="black")
     plt.xlim(0 - 2, dataset.resolution[1] + 2)
     plt.ylim(0 - 2, dataset.resolution[0] + 2)

@@ -107,23 +107,18 @@ class DerivativeFreeOptimizer:
         # Initialize samples and noise scales.
         noise_scale = self.noise_scale
         samples = self._sample(self.inference_samples)
-
-        for i in range(self.iters):
-            # Compute energies.
-            energies = ebm(x, samples)
-            probs = F.softmax(energies, dim=-1)
-
-            # Resample with replacement.
-            idxs = torch.multinomial(probs, self.inference_samples, replacement=True)
-            samples = samples[idxs]
-
-            # Add noise.
-            samples = samples + 1
-
-            # Clip to target bounds.
-
-            noise_scale *= self.noise_shrink
-
+        return samples
+        # for i in range(self.iters):
+        #     # Compute energies.
+        #     energies = ebm(x, samples)
+        #     probs = F.softmax(energies, dim=-1)
+        #     # Resample with replacement.
+        #     idxs = torch.multinomial(probs, self.inference_samples, replacement=True)
+        #     samples = samples[idxs]
+        #     # Add noise.
+        #     samples = samples + 1
+        #     # Clip to target bounds.
+        #     noise_scale *= self.noise_shrink
         # Return target with highest probability.
 
 
@@ -134,7 +129,7 @@ class StochasticOptimizerType(enum.Enum):
 
 
 if __name__ == "__main__":
-    from dataset import DatasetConfig, CoordinateRegression
+    from dataset import CoordinateRegression, DatasetConfig
 
     dataset = CoordinateRegression(DatasetConfig(dataset_size=10))
     bounds = dataset.get_target_bounds()

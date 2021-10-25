@@ -101,6 +101,11 @@ class ExplicitTrainState:
         mean_mse = total_mse / len(dataloader.dataset)
         return experiment.TensorboardLogData(scalars={"test/mse": mean_mse})
 
+    @torch.no_grad()
+    def predict(self, input: torch.Tensor) -> torch.Tensor:
+        self.model.eval()
+        return self.model(input.to(self.device))
+
 
 @dataclasses.dataclass
 class ImplicitTrainState:
@@ -122,7 +127,7 @@ class ImplicitTrainState:
         device = torch.device(device_type if torch.cuda.is_available() else "cpu")
         print(f"Using device: {device}")
 
-        model = models.ConvMLP(config=model_config)
+        model = models.EBMConvMLP(config=model_config)
 
         optimizer = torch.optim.Adam(
             model.parameters(),
@@ -132,7 +137,8 @@ class ImplicitTrainState:
         )
 
         stochastic_optimizer = optimizers.DerivativeFreeOptimizer.initialize(
-            stochastic_optim_config, device_type,
+            stochastic_optim_config,
+            device_type,
         )
 
         return ImplicitTrainState(
@@ -151,23 +157,29 @@ class ImplicitTrainState:
         input = input.to(self.device)
         target = target.to(self.device)
 
-        # Generate counter-examples.
+        # Generate N negatives, one for each element in the batch: (B, N, D).
         negatives = self.stochastic_optimizer.sample(input.size(0), self.model)
 
-        # input: B, 3, H, W
-        # input feats: B, L
-        # target: B, D
-        # negatives: B, N, D
-        # concat negatives + target -> B, N+1, D
-        # tile input -> B, N, L
-        #
+        # Merge target and negatives: (B, N+1, D).
+        targets = torch.cat([target.unsqueeze(dim=1), negatives], dim=1)
 
-        from ipdb import set_trace
-        set_trace()
+        # Generate a random permutation of the positives and negatives.
+        permutation = torch.rand(targets.size(0), targets.size(1)).argsort(dim=1)
+        targets = targets[torch.arange(targets.size(0)).unsqueeze(-1), permutation]
 
-        out = self.model(input, target, negatives)
+        # Get the original index of the positive. This will serve as the class label
+        # for the loss.
+        ground_truth = (permutation == 0).nonzero()[:, 1]
 
-        loss = None  # info-nce loss
+        # For every element in the mini-batch, there is 1 positive for which the EBM
+        # should output a low energy value, and N negatives for which the EBM should
+        # output high energy values.
+        energy = self.model(input, targets)
+
+        # Interpreting the energy as a negative logit, we can apply a cross entropy loss
+        # to train the EBM.
+        logits = -1.0 * energy
+        loss = F.cross_entropy(logits, ground_truth)
 
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
@@ -182,7 +194,7 @@ class ImplicitTrainState:
         self, dataloader: torch.utils.data.DataLoader
     ) -> experiment.TensorboardLogData:
         self.model.eval()
-        return experiment.TensorboardLogData(scalars={"test/mse": 0.})
+        return experiment.TensorboardLogData(scalars={"test/mse": 0.0})
 
 
 class PolicyType(enum.Enum):

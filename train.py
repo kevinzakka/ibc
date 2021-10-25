@@ -33,18 +33,14 @@ class TrainConfig:
     checkpoint_every_n_steps: int = 100
     eval_every_n_steps: int = 50
     target_bounds_percent: float = 0.05
-    policy_type: trainer.PolicyType = trainer.PolicyType.IMPLICIT
+    policy_type: trainer.PolicyType = trainer.PolicyType.EXPLICIT
 
 
 def make_dataloaders(
     train_config: TrainConfig,
 ) -> Dict[str, torch.utils.data.DataLoader]:
     """Initialize train/test dataloaders based on config values."""
-    kwargs = {
-        "num_workers": 0,
-        "pin_memory": torch.cuda.is_available(),
-        "shuffle": True,
-    }
+    kwargs = {"num_workers": 0, "pin_memory": torch.cuda.is_available()}
 
     # Train split.
     train_dataset_config = dataset.DatasetConfig(
@@ -55,8 +51,13 @@ def make_dataloaders(
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=train_config.train_batch_size,
+        shuffle=True,
         **kwargs,
     )
+
+    # Compute train set target mean/std-dev.
+    train_target_mean, train_target_std = train_dataset.get_target_statistics()
+    train_dataset.set_transform(train_target_mean, train_target_std)
 
     # Test split.
     test_dataset_config = dataset.DatasetConfig(
@@ -64,10 +65,12 @@ def make_dataloaders(
         seed=train_config.seed,
     )
     test_dataset = dataset.CoordinateRegression(test_dataset_config)
+    test_dataset.set_transform(train_target_mean, train_target_std)
     test_dataset.exclude(train_dataset.coordinates)
     test_dataloader = torch.utils.data.DataLoader(
         test_dataset,
         batch_size=train_config.test_batch_size,
+        shuffle=False,
         **kwargs,
     )
 
@@ -88,11 +91,19 @@ def make_train_state(
     cnn_config = models.CNNConfig(in_channels, [16, 32, 32])
 
     input_dim = 32
+    output_dim = 2
     if train_config.spatial_reduction == models.SpatialReduction.SPATIAL_SOFTMAX:
         input_dim *= 2
-    # if train_config.policy_type == trainer.PolicyType.IMPLICIT:
-    #     input_dim += 2  # Dimension of the targets.
-    mlp_config = models.MLPConfig(input_dim, 256, 2, 1, train_config.dropout_prob)
+    if train_config.policy_type == trainer.PolicyType.IMPLICIT:
+        input_dim += 2  # Dimension of the targets.
+        output_dim = 1
+    mlp_config = models.MLPConfig(
+        input_dim=input_dim,
+        hidden_dim=256,
+        output_dim=output_dim,
+        hidden_depth=1,
+        dropout_prob=train_config.dropout_prob,
+    )
 
     model_config = models.ConvMLPConfig(
         cnn_config=cnn_config,
@@ -107,7 +118,7 @@ def make_train_state(
     )
 
     if train_config.policy_type == trainer.PolicyType.EXPLICIT:
-        train_state = trainer.ExplicitTrainState(
+        train_state = trainer.ExplicitTrainState.initialize(
             model_config=model_config,
             optim_config=optim_config,
             device_type=train_config.device_type,
