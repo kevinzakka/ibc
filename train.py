@@ -27,8 +27,8 @@ class TrainConfig:
     coord_conv: bool = False
     dropout_prob: Optional[float] = None
     num_workers: int = 1
-    cudnn_deterministic: bool = False
-    cudnn_benchmark: bool = True
+    cudnn_deterministic: bool = True
+    cudnn_benchmark: bool = False
     log_every_n_steps: int = 10
     checkpoint_every_n_steps: int = 100
     eval_every_n_steps: int = 200
