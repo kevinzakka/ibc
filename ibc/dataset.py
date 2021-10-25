@@ -3,7 +3,6 @@ from typing import Optional, Tuple
 
 import numpy as np
 import torch
-import torchvision
 from torch.utils.data import Dataset
 from torchvision.transforms import ToTensor
 
@@ -38,7 +37,6 @@ class CoordinateRegression(Dataset):
         self.pixel_size = config.pixel_size
         self.pixel_color = config.pixel_color
         self.seed = config.seed
-        self.transform = None
 
         self.reset()
 
@@ -47,6 +45,13 @@ class CoordinateRegression(Dataset):
             np.random.seed(self.seed)
 
         self._coordinates = self._sample_coordinates(self.dataset_size)
+
+        # Store normalized coordinates in the range [-1, 1].
+        self._coordinates_scaled = np.array(self._coordinates, dtype=np.float32)
+        self._coordinates_scaled[:, 0] /= (self.resolution[0] - 1)
+        self._coordinates_scaled[:, 1] /= (self.resolution[1] - 1)
+        self._coordinates_scaled *= 2
+        self._coordinates_scaled -= 1
 
     def exclude(self, coordinates: np.ndarray) -> None:
         """Exclude the given coordinates, if present, from the previously sampled ones.
@@ -61,39 +66,12 @@ class CoordinateRegression(Dataset):
             mask = (self.coordinates[:, None] == coordinates).all(-1).any(1)
         print(f"Resampled {num_matches} data points.")
 
-    def get_target_statistics(self) -> Tuple[np.ndarray, np.ndarray]:
-        return self.coordinates.mean(axis=0), self.coordinates.std(axis=0)
-
-    def get_target_bounds(self, percent: float = 0.05) -> np.ndarray:
-        """Return per-dimension target min/max plus or minus a small buffer.
-
-        This is described in Section B of the supplemental.
-        """
-        # Compute per-dimension min and max.
-        per_dim_min = self.coordinates.min(axis=0)
-        per_dim_max = self.coordinates.max(axis=0)
-
-        # Add a small buffer, typically 0.05 * (max - min).
-        buffer = percent * (per_dim_max - per_dim_min)
-        bounds = np.vstack([per_dim_min - buffer, per_dim_max + buffer])
-
-        # Clip to allowed min/max.
-        slack = self.pixel_size // 2
-        bounds[:, 0] = np.clip(
-            bounds[:, 0], a_min=slack, a_max=self.resolution[0] - 1 - slack
-        )
-        bounds[:, 1] = np.clip(
-            bounds[:, 1], a_min=slack, a_max=self.resolution[1] - 1 - slack
-        )
-
-        # Standardize bounds.
-        if self.transform is not None:
-            bounds = (bounds - self.transform[0]) / self.transform[1]
-
-        return bounds
-
-    def set_transform(self, means: np.ndarray, std_devs: np.ndarray) -> None:
-        self.transform = (means, std_devs)
+    def get_target_bounds(self) -> np.ndarray:
+        """Return per-dimension target min/max."""
+        return np.vstack([
+            self.coordinates_scaled.min(axis=0),
+            self.coordinates_scaled.max(axis=0),
+        ])
 
     def _sample_coordinates(self, size: int) -> np.ndarray:
         """Helper method for generating pixel coordinates."""
@@ -116,6 +94,10 @@ class CoordinateRegression(Dataset):
     def coordinates(self) -> np.ndarray:
         return self._coordinates
 
+    @property
+    def coordinates_scaled(self) -> np.ndarray:
+        return self._coordinates_scaled
+
     def __len__(self) -> int:
         return self.dataset_size
 
@@ -131,16 +113,13 @@ class CoordinateRegression(Dataset):
         image = ToTensor()(image)
         target = torch.as_tensor(uv, dtype=torch.float32)
 
-        if self.transform is not None:
-            target = ((target - self.transform[0]) / self.transform[1]).float()
-
         return image, target
 
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
-    dataset = CoordinateRegression(DatasetConfig(dataset_size=30))
+    dataset = CoordinateRegression(DatasetConfig(dataset_size=10_000))
 
     # Visualize one instance.
     image, target = dataset[np.random.randint(len(dataset))]

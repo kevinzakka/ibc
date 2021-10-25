@@ -32,7 +32,6 @@ class TrainConfig:
     log_every_n_steps: int = 10
     checkpoint_every_n_steps: int = 100
     eval_every_n_steps: int = 200
-    target_bounds_percent: float = 0.05
     policy_type: trainer.PolicyType = trainer.PolicyType.EXPLICIT
 
 
@@ -55,17 +54,12 @@ def make_dataloaders(
         **kwargs,
     )
 
-    # Compute train set target mean/std-dev.
-    train_target_mean, train_target_std = train_dataset.get_target_statistics()
-    train_dataset.set_transform(train_target_mean, train_target_std)
-
     # Test split.
     test_dataset_config = dataset.DatasetConfig(
         dataset_size=train_config.test_dataset_size,
         seed=train_config.seed,
     )
     test_dataset = dataset.CoordinateRegression(test_dataset_config)
-    test_dataset.set_transform(train_target_mean, train_target_std)
     test_dataset.exclude(train_dataset.coordinates)
     test_dataloader = torch.utils.data.DataLoader(
         test_dataset,
@@ -124,11 +118,7 @@ def make_train_state(
             device_type=train_config.device_type,
         )
     else:
-        # Compute bounds on target values in the training data.
-        target_bounds = train_dataloader.dataset.get_target_bounds(
-            train_config.target_bounds_percent
-        )
-
+        target_bounds = train_dataloader.dataset.get_target_bounds()
         stochastic_optim_config = optimizers.DerivativeFreeConfig(bounds=target_bounds)
 
         train_state = trainer.ImplicitTrainState.initialize(
