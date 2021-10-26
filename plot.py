@@ -30,6 +30,7 @@ def eval(
     dataloaders: Dict[str, torch.utils.data.DataLoader],
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     total_mse = 0.0
+    num_small_err = 0
     pixel_error = []
     for batch in tqdm(dataloaders["test"]):
         input, target = batch
@@ -39,21 +40,24 @@ def eval(
         pred_unscaled = np.array(prediction)
         pred_unscaled += 1
         pred_unscaled /= 2
-        pred_unscaled[:, 0] *= dataloaders["test"].dataset.resolution[0]
-        pred_unscaled[:, 1] *= dataloaders["test"].dataset.resolution[1]
+        pred_unscaled[:, 0] *= dataloaders["test"].dataset.resolution[0] - 1
+        pred_unscaled[:, 1] *= dataloaders["test"].dataset.resolution[1] - 1
 
         target_unscaled = np.array(target)
         target_unscaled += 1
         target_unscaled /= 2
-        target_unscaled[:, 0] *= dataloaders["test"].dataset.resolution[0]
-        target_unscaled[:, 1] *= dataloaders["test"].dataset.resolution[1]
+        target_unscaled[:, 0] *= dataloaders["test"].dataset.resolution[0] - 1
+        target_unscaled[:, 1] *= dataloaders["test"].dataset.resolution[1] - 1
 
         diff = pred_unscaled - target_unscaled
-        pixel_error.append(np.linalg.norm(diff, axis=1))
+        error = np.linalg.norm(diff, axis=1)
+        num_small_err += len(error[error < 1.0])
+        pixel_error.append(error)
         total_mse += (diff ** 2).mean(axis=1).sum()
 
-    average_mse = total_mse / len(dataloaders["test"].dataset)
-    print(f"Test set MSE: {average_mse}")
+    total_test = len(dataloaders["test"].dataset)
+    average_mse = total_mse / total_test
+    print(f"Test set MSE: {average_mse} ({num_small_err}/{total_test})")
 
     pixel_error = np.concatenate(pixel_error)
     test_coords = dataloaders["test"].dataset.coordinates
@@ -106,8 +110,7 @@ def plot(
     )
 
     # Add convext hull of train set.
-    hull = ConvexHull(train_coords)
-    for simplex in hull.simplices:
+    for simplex in ConvexHull(train_coords).simplices:
         plt.plot(
             train_coords[simplex, 0],
             train_coords[simplex, 1],

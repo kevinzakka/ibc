@@ -11,11 +11,12 @@ do
         --experiment-name $EXPERIMENT_NAME \
         --train-dataset-size $train_size \
         --policy-type EXPLICIT \
-        --dropout-prob 0.2 \
-        --weight-decay 1e-4 \
-        --max-epochs 3000 \
+        --dropout-prob 0.1 \
+        --weight-decay 0.0 \
+        --max-epochs 1000 \
         --learning-rate 1e-3 \
         --spatial-reduction SPATIAL_SOFTMAX \
+        --coord-conv \
 
     python plot.py --experiment-name $EXPERIMENT_NAME
 done

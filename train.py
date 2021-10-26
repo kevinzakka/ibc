@@ -33,6 +33,7 @@ class TrainConfig:
     checkpoint_every_n_steps: int = 100
     eval_every_n_steps: int = 200
     policy_type: trainer.PolicyType = trainer.PolicyType.EXPLICIT
+    stochastic_optimizer_train_samples: int = 64
 
 
 def make_dataloaders(
@@ -119,7 +120,10 @@ def make_train_state(
         )
     else:
         target_bounds = train_dataloader.dataset.get_target_bounds()
-        stochastic_optim_config = optimizers.DerivativeFreeConfig(bounds=target_bounds)
+        stochastic_optim_config = optimizers.DerivativeFreeConfig(
+            bounds=target_bounds,
+            train_samples=train_config.stochastic_optimizer_train_samples,
+        )
 
         train_state = trainer.ImplicitTrainState.initialize(
             model_config=model_config,

@@ -125,8 +125,9 @@ class CoordinateRegression(Dataset):
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
+    from scipy.spatial import ConvexHull
 
-    dataset = CoordinateRegression(DatasetConfig(dataset_size=100))
+    dataset = CoordinateRegression(DatasetConfig(dataset_size=30, seed=0))
 
     # Visualize one instance.
     image, target = dataset[np.random.randint(len(dataset))]
@@ -134,11 +135,36 @@ if __name__ == "__main__":
     plt.imshow(image.permute(1, 2, 0).numpy())
     plt.show()
 
-    # Plot target distribution.
+    # Plot target distribution and convex hull.
     targets = dataset.coordinates
     plt.scatter(targets[:, 0], targets[:, 1], marker="x", c="black")
-    plt.xlim(0 - 2, dataset.resolution[1] + 2)
-    plt.ylim(0 - 2, dataset.resolution[0] + 2)
+    for simplex in ConvexHull(targets).simplices:
+        plt.plot(
+            targets[simplex, 0],
+            targets[simplex, 1],
+            "--",
+            zorder=2,
+            alpha=0.5,
+            c="black",
+        )
+    plt.xlim(0, dataset.resolution[1])
+    plt.ylim(0, dataset.resolution[0])
+    plt.show()
+
+    # Plot target distribution and convex hull.
+    targets = dataset.coordinates_scaled
+    plt.scatter(targets[:, 0], targets[:, 1], marker="x", c="black")
+    for simplex in ConvexHull(targets).simplices:
+        plt.plot(
+            targets[simplex, 0],
+            targets[simplex, 1],
+            "--",
+            zorder=2,
+            alpha=0.5,
+            c="black",
+        )
+    plt.xlim(-1, 1)
+    plt.ylim(-1, 1)
     plt.show()
 
     print(f"Target bounds:")
