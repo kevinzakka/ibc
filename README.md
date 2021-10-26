@@ -1,6 +1,6 @@
-## Implicit Behavior Cloning - PyTorch (wip)
+## Implicit Behavioral Cloning - PyTorch
 
-Pytorch implementation of <a href="https://arxiv.org/abs/2109.00137">Implicit Behavior Cloning</a>.
+Pytorch implementation of <a href="https://arxiv.org/abs/2109.00137">Implicit Behavioral Cloning</a>.
 
 ## Install
 
