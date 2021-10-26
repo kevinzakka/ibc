@@ -40,14 +40,14 @@ def eval(
         pred_unscaled = np.array(prediction)
         pred_unscaled += 1
         pred_unscaled /= 2
-        pred_unscaled[:, 0] *= dataloaders["test"].dataset.resolution[0] - 1
-        pred_unscaled[:, 1] *= dataloaders["test"].dataset.resolution[1] - 1
+        pred_unscaled[:, 0] *= (dataloaders["test"].dataset.resolution[0] - 1)
+        pred_unscaled[:, 1] *= (dataloaders["test"].dataset.resolution[1] - 1)
 
         target_unscaled = np.array(target)
         target_unscaled += 1
         target_unscaled /= 2
-        target_unscaled[:, 0] *= dataloaders["test"].dataset.resolution[0] - 1
-        target_unscaled[:, 1] *= dataloaders["test"].dataset.resolution[1] - 1
+        target_unscaled[:, 0] *= (dataloaders["test"].dataset.resolution[0] - 1)
+        target_unscaled[:, 1] *= (dataloaders["test"].dataset.resolution[1] - 1)
 
         diff = pred_unscaled - target_unscaled
         error = np.linalg.norm(diff, axis=1)

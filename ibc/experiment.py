@@ -47,21 +47,15 @@ class Experiment:
         super().__setattr__("log_dir", self.data_dir / "tb")
         super().__setattr__("checkpoint_dir", self.data_dir / "checkpoints")
 
-    def assert_new(self) -> "Experiment":
+    def assert_new(self) -> Experiment:
         """Makes sure that there are no existing checkpoints, logs, or metadata."""
         assert not self.data_dir.exists() or tuple(self.data_dir.iterdir()) == ()
         return self
 
-    def assert_exists(self) -> "Experiment":
+    def assert_exists(self) -> Experiment:
         """Makes sure that there are existing checkpoints, logs, or metadata."""
         assert self.data_dir.exists() and tuple(self.data_dir.iterdir()) != ()
         return self
-
-    def clear(self) -> "Experiment":
-        raise NotImplementedError
-
-    def move(self) -> "Experiment":
-        raise NotImplementedError
 
     # =================================================================== #
     # Properties.

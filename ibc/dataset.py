@@ -86,8 +86,8 @@ class CoordinateRegression(Dataset):
     def _scale_coordinates(self, coords: np.ndarray) -> np.ndarray:
         """Helper method for scaling coordinates to the [-1, 1] range."""
         coords_scaled = np.array(coords, dtype=np.float32)
-        coords_scaled[:, 0] /= self.resolution[0] - 1
-        coords_scaled[:, 1] /= self.resolution[1] - 1
+        coords_scaled[:, 0] /= (self.resolution[0] - 1)
+        coords_scaled[:, 1] /= (self.resolution[1] - 1)
         coords_scaled *= 2
         coords_scaled -= 1
         return coords_scaled
