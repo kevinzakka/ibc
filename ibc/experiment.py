@@ -8,7 +8,7 @@ import tempfile
 from typing import TYPE_CHECKING, Any, Dict, Optional, Type, TypeVar, Union
 
 if TYPE_CHECKING:
-    from .trainer import TrainState
+    from .trainer import TrainStateProtocol
 
 import numpy as np
 import torch
@@ -79,7 +79,7 @@ class Experiment:
 
     def save_checkpoint(
         self,
-        target: TrainState,
+        target: TrainStateProtocol,
         step: int,
         prefix: str = "ckpt_",
         keep: int = 10,
@@ -103,7 +103,7 @@ class Experiment:
 
     def restore_checkpoint(
         self,
-        target: TrainState,
+        target: TrainStateProtocol,
         step: Optional[int] = None,
         prefix: str = "ckpt_",
     ):

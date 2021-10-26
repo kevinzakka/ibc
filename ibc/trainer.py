@@ -140,9 +140,9 @@ class ImplicitTrainState:
     def initialize(
         model_config: models.ConvMLPConfig,
         optim_config: optimizers.OptimizerConfig,
-        stochastic_optim_config: optimizers.StochasticOptimizerConfig,
+        stochastic_optim_config: optimizers.DerivativeFreeConfig,
         device_type: str,
-    ) -> ExplicitTrainState:
+    ) -> ImplicitTrainState:
         device = torch.device(device_type if torch.cuda.is_available() else "cpu")
         print(f"Using device: {device}")
 

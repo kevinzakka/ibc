@@ -12,6 +12,7 @@ import torch
 from scipy.spatial import ConvexHull
 from tqdm.auto import tqdm
 
+from ibc.dataset import CoordinateRegression
 from ibc.experiment import Experiment
 from ibc.trainer import TrainStateProtocol
 from train import TrainConfig, make_dataloaders, make_train_state
@@ -29,6 +30,11 @@ def eval(
     train_state: TrainStateProtocol,
     dataloaders: Dict[str, torch.utils.data.DataLoader],
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    dataset_test = dataloaders["test"].dataset
+    dataset_train = dataloaders["train"].dataset
+    assert isinstance(dataset_test, CoordinateRegression)
+    assert isinstance(dataset_train, CoordinateRegression)
+
     total_mse = 0.0
     num_small_err = 0
     pixel_error = []
@@ -40,30 +46,28 @@ def eval(
         pred_unscaled = np.array(prediction)
         pred_unscaled += 1
         pred_unscaled /= 2
-        pred_unscaled[:, 0] *= (dataloaders["test"].dataset.resolution[0] - 1)
-        pred_unscaled[:, 1] *= (dataloaders["test"].dataset.resolution[1] - 1)
+        pred_unscaled[:, 0] *= dataset_test.resolution[0] - 1
+        pred_unscaled[:, 1] *= dataset_test.resolution[1] - 1
 
         target_unscaled = np.array(target)
         target_unscaled += 1
         target_unscaled /= 2
-        target_unscaled[:, 0] *= (dataloaders["test"].dataset.resolution[0] - 1)
-        target_unscaled[:, 1] *= (dataloaders["test"].dataset.resolution[1] - 1)
+        target_unscaled[:, 0] *= dataset_test.resolution[0] - 1
+        target_unscaled[:, 1] *= dataset_test.resolution[1] - 1
 
         diff = pred_unscaled - target_unscaled
-        error = np.linalg.norm(diff, axis=1)
+        error = np.asarray(np.linalg.norm(diff, axis=1))
         num_small_err += len(error[error < 1.0])
-        pixel_error.append(error)
+        pixel_error.extend(error.tolist())
         total_mse += (diff ** 2).mean(axis=1).sum()
 
-    total_test = len(dataloaders["test"].dataset)
+    total_test = len(dataset_test)
     average_mse = total_mse / total_test
     print(f"Test set MSE: {average_mse} ({num_small_err}/{total_test})")
 
-    pixel_error = np.concatenate(pixel_error)
-    test_coords = dataloaders["test"].dataset.coordinates
-    train_coords = dataloaders["train"].dataset.coordinates
-
-    return train_coords, test_coords, pixel_error
+    test_coords = dataset_test.coordinates
+    train_coords = dataset_train.coordinates
+    return train_coords, test_coords, np.asarray(pixel_error)
 
 
 def plot(

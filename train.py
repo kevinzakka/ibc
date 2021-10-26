@@ -26,7 +26,7 @@ class TrainConfig:
     spatial_reduction: models.SpatialReduction = models.SpatialReduction.SPATIAL_SOFTMAX
     coord_conv: bool = False
     dropout_prob: Optional[float] = None
-    num_workers: int = 1
+    num_workers: int = 0
     cudnn_deterministic: bool = True
     cudnn_benchmark: bool = False
     log_every_n_steps: int = 10
@@ -40,8 +40,6 @@ def make_dataloaders(
     train_config: TrainConfig,
 ) -> Dict[str, torch.utils.data.DataLoader]:
     """Initialize train/test dataloaders based on config values."""
-    kwargs = {"num_workers": 0, "pin_memory": torch.cuda.is_available()}
-
     # Train split.
     train_dataset_config = dataset.DatasetConfig(
         dataset_size=train_config.train_dataset_size,
@@ -52,7 +50,8 @@ def make_dataloaders(
         train_dataset,
         batch_size=train_config.train_batch_size,
         shuffle=True,
-        **kwargs,
+        num_workers=train_config.num_workers,
+        pin_memory=torch.cuda.is_available(),
     )
 
     # Test split.
@@ -66,7 +65,8 @@ def make_dataloaders(
         test_dataset,
         batch_size=train_config.test_batch_size,
         shuffle=False,
-        **kwargs,
+        num_workers=train_config.num_workers,
+        pin_memory=torch.cuda.is_available(),
     )
 
     return {
@@ -76,7 +76,7 @@ def make_dataloaders(
 
 
 def make_train_state(
-    train_config: trainer.TrainStateProtocol,
+    train_config: TrainConfig,
     train_dataloader: torch.utils.data.DataLoader,
 ) -> trainer.TrainStateProtocol:
     """Initialize train state based on config values."""
@@ -112,6 +112,7 @@ def make_train_state(
         weight_decay=train_config.weight_decay,
     )
 
+    train_state: trainer.TrainStateProtocol
     if train_config.policy_type == trainer.PolicyType.EXPLICIT:
         train_state = trainer.ExplicitTrainState.initialize(
             model_config=model_config,

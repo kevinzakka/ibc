@@ -95,8 +95,7 @@ class DerivativeFreeOptimizer:
         """Helper method for drawing samples from the uniform random distribution."""
         size = (num_samples, self.bounds.shape[1])
         samples = np.random.uniform(self.bounds[0, :], self.bounds[1, :], size=size)
-        samples = torch.as_tensor(samples, dtype=torch.float32, device=self.device)
-        return samples
+        return torch.as_tensor(samples, dtype=torch.float32, device=self.device)
 
     def sample(self, batch_size: int, ebm: nn.Module) -> torch.Tensor:
         del ebm  # The derivative-free optimizer does not use the ebm for sampling.

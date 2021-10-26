@@ -1,13 +1,12 @@
 import dataclasses
 import enum
 from functools import partial
-from typing import Optional, Tuple
+from typing import Callable, Optional, Sequence
 
 import torch
 import torch.nn as nn
 
-from .modules import (CoordConv, GlobalAvgPool2d, GlobalMaxPool2d,
-                      SpatialSoftArgmax)
+from .modules import CoordConv, GlobalAvgPool2d, GlobalMaxPool2d, SpatialSoftArgmax
 
 
 class ActivationType(enum.Enum):
@@ -31,11 +30,13 @@ class MLP(nn.Module):
     def __init__(self, config: MLPConfig) -> None:
         super().__init__()
 
+        dropout_layer: Callable
         if config.dropout_prob is not None:
             dropout_layer = partial(nn.Dropout, p=config.dropout_prob)
         else:
             dropout_layer = nn.Identity
 
+        layers: Sequence[nn.Module]
         if config.hidden_depth == 0:
             layers = [nn.Linear(config.input_dim, config.output_dim)]
         else:
@@ -82,7 +83,7 @@ class ResidualBlock(nn.Module):
 @dataclasses.dataclass(frozen=True)
 class CNNConfig:
     in_channels: int
-    blocks: Tuple[int, ...] = dataclasses.field(default=(16, 32, 32))
+    blocks: Sequence[int] = dataclasses.field(default=(16, 32, 32))
     activation_fn: ActivationType = ActivationType.RELU
 
 

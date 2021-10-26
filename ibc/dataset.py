@@ -86,8 +86,8 @@ class CoordinateRegression(Dataset):
     def _scale_coordinates(self, coords: np.ndarray) -> np.ndarray:
         """Helper method for scaling coordinates to the [-1, 1] range."""
         coords_scaled = np.array(coords, dtype=np.float32)
-        coords_scaled[:, 0] /= (self.resolution[0] - 1)
-        coords_scaled[:, 1] /= (self.resolution[1] - 1)
+        coords_scaled[:, 0] /= self.resolution[0] - 1
+        coords_scaled[:, 1] /= self.resolution[1] - 1
         coords_scaled *= 2
         coords_scaled -= 1
         return coords_scaled
@@ -117,10 +117,10 @@ class CoordinateRegression(Dataset):
             uv[1] - self.pixel_size // 2 : uv[1] + self.pixel_size // 2 + 1,
         ] = self.pixel_color
 
-        image = ToTensor()(image)
-        target = torch.as_tensor(uv_scaled, dtype=torch.float32)
+        image_tensor = ToTensor()(image)
+        target_tensor = torch.as_tensor(uv_scaled, dtype=torch.float32)
 
-        return image, target
+        return image_tensor, target_tensor
 
 
 if __name__ == "__main__":
