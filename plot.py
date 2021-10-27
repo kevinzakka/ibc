@@ -113,16 +113,17 @@ def plot(
         alpha=1.0,
     )
 
-    # Add convext hull of train set.
-    for simplex in ConvexHull(train_coords).simplices:
-        plt.plot(
-            train_coords[simplex, 0],
-            train_coords[simplex, 1],
-            "--",
-            zorder=2,
-            alpha=0.5,
-            c="black",
-        )
+    # Add convex hull of train set.
+    if train_coords.shape[0] > 2:
+        for simplex in ConvexHull(train_coords).simplices:
+            plt.plot(
+                train_coords[simplex, 0],
+                train_coords[simplex, 1],
+                "--",
+                zorder=2,
+                alpha=0.5,
+                c="black",
+            )
 
     plt.xlim(0 - 2, resolution[1] + 2)
     plt.ylim(0 - 2, resolution[0] + 2)

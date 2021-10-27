@@ -5,4 +5,3 @@ matplotlib
 tqdm
 tensorboard
 scipy
-opencv-python
