@@ -9,18 +9,9 @@ conda create -n ibc python=3.8
 pip install -r requirements.txt
 ```
 
-## Progress
-
-* [x] Implement the coordinate regression task.
-* [x] Implement an explicit policy.
-* [x] Generate plot like in Figure 4.
-* [x] Implement an implicit EBM model.
-    * [x] Derivative-free sampler.
-    * [x] `TrainState` for EBM training.
-    * [x] Model class for ingesting both x and y.
-* [ ] Implement Langevin dynamics.
-
 ## Results
+
+To reproduce results from the Coordinate Regression Task (Section 3), execute the `run_explicit.sh` and `run_implicit.sh` scripts. Note that the implicit policy does a tad bit worst with 30 examples than 10. Not entirely sure why that is the case and need to investigate more.
 
 |             | Explicit Policy | Implicit Policy |
 |-------------|-----------------|-----------------|

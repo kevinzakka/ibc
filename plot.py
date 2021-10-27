@@ -23,7 +23,7 @@ class Args:
     experiment_name: str
     plot_dir: str = "assets"
     dpi: int = 200
-    threshold: float = 30
+    threshold: float = 140
 
 
 def eval(

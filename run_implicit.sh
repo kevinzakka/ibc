@@ -11,9 +11,9 @@ do
         --experiment-name $EXPERIMENT_NAME \
         --train-dataset-size $train_size \
         --policy-type IMPLICIT \
-        --dropout-prob 0.1 \
+        --dropout-prob 0.0 \
         --weight-decay 0.0 \
-        --max-epochs 1000 \
+        --max-epochs 2000 \
         --learning-rate 1e-3 \
         --spatial-reduction SPATIAL_SOFTMAX \
         --coord-conv \
