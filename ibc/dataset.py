@@ -1,6 +1,7 @@
 import dataclasses
 from typing import Optional, Tuple
 
+import cv2
 import numpy as np
 import torch
 from torch.utils.data import Dataset
@@ -12,10 +13,10 @@ class DatasetConfig:
     dataset_size: int = 30
     """The size of the dataset. Useful for sample efficiency experiments."""
 
-    resolution: Tuple[int, int] = (100, 100)
+    resolution: Tuple[int, int] = (96, 96)
     """The resolution of the image."""
 
-    pixel_size: int = 5
+    pixel_size: int = 3
     """The size of the pixel whose coordinates we'd like to regress. Must be odd."""
 
     pixel_color: Tuple[int, int, int] = (0, 255, 0)
@@ -63,24 +64,12 @@ class CoordinateRegression(Dataset):
 
     def get_target_bounds(self) -> np.ndarray:
         """Return per-dimension target min/max."""
-        return np.vstack(
-            [
-                self.coordinates_scaled.min(axis=0),
-                self.coordinates_scaled.max(axis=0),
-            ]
-        )
+        return np.array([[-1., -1.], [1., 1.]])
 
     def _sample_coordinates(self, size: int) -> np.ndarray:
         """Helper method for generating pixel coordinates."""
-        # Randomly generate pixel coordinates.
         u = np.random.randint(0, self.resolution[0], size=size)
         v = np.random.randint(0, self.resolution[1], size=size)
-
-        # Ensure we remain within bounds when we take the pixel size into account.
-        slack = self.pixel_size // 2
-        u = np.clip(u, a_min=slack, a_max=self.resolution[0] - 1 - slack)
-        v = np.clip(v, a_min=slack, a_max=self.resolution[1] - 1 - slack)
-
         return np.vstack([u, v]).astype(np.int16).T
 
     def _scale_coordinates(self, coords: np.ndarray) -> np.ndarray:
@@ -111,11 +100,13 @@ class CoordinateRegression(Dataset):
         uv = self._coordinates[index]
         uv_scaled = self._coordinates_scaled[index]
 
-        image = np.full(self.image_shape, fill_value=255, dtype=np.uint8)
-        image[
-            uv[0] - self.pixel_size // 2 : uv[0] + self.pixel_size // 2 + 1,
-            uv[1] - self.pixel_size // 2 : uv[1] + self.pixel_size // 2 + 1,
-        ] = self.pixel_color
+        image = cv2.circle(
+            np.full(self.image_shape, fill_value=255, dtype=np.uint8),
+            (uv[1], uv[0]),
+            radius=self.pixel_size,
+            color=self.pixel_color,
+            thickness=-1,
+        )
 
         image_tensor = ToTensor()(image)
         target_tensor = torch.as_tensor(uv_scaled, dtype=torch.float32)
