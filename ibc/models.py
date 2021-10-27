@@ -5,6 +5,7 @@ from typing import Callable, Optional, Sequence
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from .modules import CoordConv, GlobalAvgPool2d, GlobalMaxPool2d, SpatialSoftArgmax
 
@@ -100,7 +101,6 @@ class CNN(nn.Module):
             layers.extend(
                 [
                     nn.Conv2d(depth_in, depth_out, 3, padding=1),
-                    nn.MaxPool2d(3, stride=2, padding=1),
                     ResidualBlock(depth_out, config.activation_fn),
                 ]
             )
@@ -137,6 +137,7 @@ class ConvMLP(nn.Module):
         self.coord_conv = config.coord_conv
 
         self.cnn = CNN(config.cnn_config)
+        self.conv = nn.Conv2d(config.cnn_config.blocks[-1], 16, 1)
         self.reducer = config.spatial_reduction.value()
         self.mlp = MLP(config.mlp_config)
 
@@ -144,6 +145,7 @@ class ConvMLP(nn.Module):
         if self.coord_conv:
             x = CoordConv()(x)
         out = self.cnn(x, activate=True)
+        out = F.relu(self.conv(out))
         out = self.reducer(out)
         out = self.mlp(out)
         return out
@@ -156,6 +158,7 @@ class EBMConvMLP(nn.Module):
         self.coord_conv = config.coord_conv
 
         self.cnn = CNN(config.cnn_config)
+        self.conv = nn.Conv2d(config.cnn_config.blocks[-1], 16, 1)
         self.reducer = config.spatial_reduction.value()
         self.mlp = MLP(config.mlp_config)
 
@@ -163,6 +166,7 @@ class EBMConvMLP(nn.Module):
         if self.coord_conv:
             x = CoordConv()(x)
         out = self.cnn(x, activate=True)
+        out = F.relu(self.conv(out))
         out = self.reducer(out)
         fused = torch.cat([out.unsqueeze(1).expand(-1, y.size(1), -1), y], dim=-1)
         B, N, D = fused.size()
@@ -180,8 +184,9 @@ if __name__ == "__main__":
     )
 
     net = ConvMLP(config)
+    print(net)
 
-    x = torch.randn(2, 3, 100, 100)
+    x = torch.randn(2, 3, 96, 96)
     with torch.no_grad():
         out = net(x)
-    assert out.shape == (2, 2)
+    print(out.shape)

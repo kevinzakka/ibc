@@ -64,7 +64,7 @@ class CoordinateRegression(Dataset):
 
     def get_target_bounds(self) -> np.ndarray:
         """Return per-dimension target min/max."""
-        return np.array([[-1., -1.], [1., 1.]])
+        return np.array([[-1.0, -1.0], [1.0, 1.0]])
 
     def _sample_coordinates(self, size: int) -> np.ndarray:
         """Helper method for generating pixel coordinates."""

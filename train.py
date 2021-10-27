@@ -26,12 +26,12 @@ class TrainConfig:
     spatial_reduction: models.SpatialReduction = models.SpatialReduction.SPATIAL_SOFTMAX
     coord_conv: bool = False
     dropout_prob: Optional[float] = None
-    num_workers: int = 0
+    num_workers: int = 1
     cudnn_deterministic: bool = True
     cudnn_benchmark: bool = False
     log_every_n_steps: int = 10
     checkpoint_every_n_steps: int = 100
-    eval_every_n_steps: int = 200
+    eval_every_n_steps: int = 1000
     policy_type: trainer.PolicyType = trainer.PolicyType.EXPLICIT
     stochastic_optimizer_train_samples: int = 64
 
@@ -83,9 +83,10 @@ def make_train_state(
     in_channels = 3
     if train_config.coord_conv:
         in_channels += 2
-    cnn_config = models.CNNConfig(in_channels, [16, 32, 32])
+    residual_blocks = [16, 32, 32]
+    cnn_config = models.CNNConfig(in_channels, residual_blocks)
 
-    input_dim = 32
+    input_dim = 16  # We have a 1x1 conv that reduces to 16 channels.
     output_dim = 2
     if train_config.spatial_reduction == models.SpatialReduction.SPATIAL_SOFTMAX:
         input_dim *= 2
