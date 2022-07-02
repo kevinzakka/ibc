@@ -1,0 +1,9 @@
+cff-version: 0.0.1
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: Zakka
+    given-names: Kevin
+title: "A PyTorch Implementation of Implicit Behavioral Cloning"
+version: 0.0.1
+date-released: 2021-10-27
+url: "https://github.com/kevinzakka/ibc"

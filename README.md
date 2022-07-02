@@ -20,6 +20,19 @@ To reproduce results from the Coordinate Regression Task (Section 3), execute th
 
 ## Citation
 
+If you find this code useful, consider citing it along with the paper:
+
+```bibtex
+@software{zakka2021ibc,
+    author = {Zakka, Kevin},
+    month = {10},
+    title = {{A PyTorch Implementation of Implicit Behavioral Cloning}},
+    url = {https://github.com/kevinzakka/ibc},
+    version = {0.0.1},
+    year = {2021}
+}
+```
+
 ```bibtex
 @misc{florence2021implicit,
     title = {Implicit Behavioral Cloning},
